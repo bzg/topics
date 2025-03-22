@@ -9,7 +9,7 @@ Web application to expose topics.
 Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 
 #+begin_src sh
-bbin install https://raw.githubusercontent.com/bzg/topics/refs/heads/main/topics.clj
+bbin install io.github.bzg/topics
 #+end_src
 
 Then run:

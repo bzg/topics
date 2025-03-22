@@ -22,11 +22,12 @@
 ;;   "path" : [ "Section", "Subsection (as category)" ]
 ;; } ]
 
-(require '[org.httpkit.server :as server]
-         '[cheshire.core :as json]
-         '[clojure.string :as str]
-         '[babashka.cli :as cli]
-         '[taoensso.timbre :as log])
+(ns bzg.topics
+  (:require [org.httpkit.server :as server]
+            [cheshire.core :as json]
+            [clojure.string :as str]
+            [babashka.cli :as cli]
+            [taoensso.timbre :as log]))
 
 (def version "0.1")
 
@@ -369,10 +370,10 @@
   (println (cli/format-opts {:spec cli-options}))
   (System/exit 0))
 
-(defn -main []
+(defn -main [& args]
   (try
     ;; Parse command line arguments with simplified handling
-    (let [opts (cli/parse-opts *command-line-args* {:spec cli-options})]
+    (let [opts (cli/parse-opts args {:spec cli-options})]
       (when (:help opts) (show-help))
       (when (:version opts) (print-version))
       (log/merge-config! {:min-level (:log-level opts)})
@@ -397,4 +398,4 @@
 
 ;; Main entry point
 (when (= *file* (System/getProperty "babashka.file"))
-  (-main))
+  (apply -main *command-line-args*))
