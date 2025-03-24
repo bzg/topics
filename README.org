@@ -12,7 +12,7 @@ Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 bbin install io.github.bzg/topics
 #+end_src
 
-Then run:
+* Run
 
 #+begin_src sh
 topics # Then check http://localhost:8080

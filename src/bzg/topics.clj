@@ -7,7 +7,7 @@
 ;; Topics is a small web application exposing topics, loaded from a
 ;; local or distance json file.  You can try it quickly like this:
 ;;
-;; ~$ topics -f https://code.gouv.fr/data/faq.json
+;; ~$ topics -t https://code.gouv.fr/data/faq.json
 ;;
 ;; Then check http://localhost:8080
 ;;
@@ -29,29 +29,24 @@
             [babashka.cli :as cli]
             [taoensso.timbre :as log]))
 
-(def version "0.1")
-
-(defn print-version []
-  (println (format "topics %s" version))
-  (System/exit 0))
-
-;; Define CLI specs
 (def cli-options
-  {:base-path {:desc "Base path for subdirectory deployment (e.g., /topics)" :alias :b :default ""}
-   :footer    {:desc "Footer text" :alias :F :default "https://github.com/bzg/utils"}
-   :help      {:desc "Show help" :alias :h :type :boolean}
-   :log-level {:alias :l :desc "Set log level (debug, info, warn, error)" :ref "<level>" :default :info}
-   :port      {:desc "Port number for server" :default 8080 :alias :p :coerce :int}
-   :source    {:desc "Path to the Topics source" :alias :s :default "https://github.com/bzg/utils"}
-   :tagline   {:desc "Website tagline" :alias :T :default "A few topics to explore"}
-   :title     {:desc "Website title" :alias :t :default "Topics"}
-   :topics    {:desc "Path to Topics JSON file" :alias :f :default "topics.json"}
-   :version   {:desc "Show version" :alias :v :type :boolean}})
+  {;; App contents options
+   :contents         {:alias :c :desc "Path to contents JSON file" :default "topics.json"}
+   :contents-sources {:alias :C :desc "Path to contents source" :default "[local]"}
+   ;; App UI options
+   :title            {:alias :t :desc "Website title" :default "Topics"}
+   :tagline          {:alias :T :desc "Website tagline" :default "A few topics to explore"}
+   :footer           {:alias :f :desc "Footer text" :default "Made with <a href=\"https://github.com/bzg/topics\">Topics</a>"}
+   ;; App options
+   :log-level        {:alias :l        :desc    "Set log level (debug, info, warn, error)"
+                      :ref   "<level>" :default "info" :coerce :string}
+   :base-path        {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :default ""}
+   :port             {:alias :p :desc "Port number for server" :default 8080 :coerce :int}
+   :help             {:alias :h :desc "Show help" :type :boolean}})
 
 (defn with-base-path [path base-path]
   (str (str/replace base-path #"/$" "") path))
 
-;; Safely encode URL components to handle special characters
 (defn safe-url-encode [^String s]
   (when (not-empty s)
     (-> s
@@ -61,7 +56,6 @@
         (str/replace "%29" ")")
         (str/replace "%2C" ","))))
 
-;; Safely decode URL components
 (defn safe-url-decode [^String s]
   (when (not-empty s)
     (try
@@ -69,7 +63,6 @@
       (catch Exception _
         (log/warn "Error decoding URL parameter:" s)))))
 
-;; Load Topics data directly
 (defn load-topics-data [source]
   (try
     (log/info "Loading Topics data from" source)
@@ -80,7 +73,6 @@
     (catch Exception e
       (log/error "Error loading Topics data from" source ":" (.getMessage e)))))
 
-;; Helper function to strip HTML tags for text content searching
 (defn strip-html [^String html]
   (when html
     (-> html
@@ -92,7 +84,6 @@
         (str/replace #"&quot;" "\"")
         (str/replace #"&apos;" "'"))))
 
-;; Protect search input by handling potentially harmful characters
 (defn sanitize-search-query [^String query]
   (when query
     (-> query
@@ -100,7 +91,6 @@
         (str/replace #"[\\'\";`]" "")      
         (str/trim))))                      
 
-;; Normalize text for improved matching
 (defn normalize-text [^String text]
   (when text
     (-> text
@@ -131,17 +121,15 @@
                     (some #(str/includes? (normalize-text %) query-norm) path)))
               topics-data))))
 
-;; Function to get categories from path
 (defn get-categories [topics-data]
   (let [paths      (map :path topics-data)
         categories (distinct (map last paths))]
     (sort categories)))
 
-;; Get Topics items by category
 (defn get-topics-by-category [category topics-data]
   (filter #(= (last (:path %)) category) topics-data))
 
-(defn pico-page-layout [page-title content title tagline footer source base-path]
+(defn page-layout [page-title content title tagline footer source base-path]
   (str "<!DOCTYPE html>
 <html lang=\"fr\" data-theme=\"light\">
 <head>
@@ -170,6 +158,7 @@
   .alert {padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;}
   .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
   .alert-error {background-color: #ffe3e3; border: 1px solid #ffa8a8; color: #e03131;}
+  .footer {text-align: center;font-size: .8rem;}
   </style>
   </head>
   <body>
@@ -188,17 +177,9 @@
 
   <footer>
   <div class=\"container\">
-  <p>" footer "</p>
-  <p>Voir <a target=\"new\" href=\"" source "\">la source des questions et réponses</a></p>
+  <div class=\"footer\"><p><a target=\"new\" href=\"" source "\">Source des contenus</a> · " footer "</p>
   </div>
   </footer>
-
-  <script>
-  // Enable details/summary accordion behavior if needed
-  document.addEventListener('DOMContentLoaded', function() {
-                                                            // You can add JavaScript here if needed
-                                                            });
-  </script>
   </body>
   </html>"))
 
@@ -287,7 +268,6 @@
   </div>
   </div>")))
 
-;; Function to extract path without base path
 (defn strip-base-path [uri base-path]
   (let [base-len (count base-path)]
     (if (and (seq base-path)
@@ -298,7 +278,6 @@
           (str "/" path)))
       uri)))
 
-;; Parse query string with improved safety
 (defn parse-query-string [query-string]
   (when query-string
     (try
@@ -313,11 +292,10 @@
 (defn html-response [status title content settings]
   {:status  status
    :headers {"Content-Type" "text/html; charset=utf-8"}
-   :body    (pico-page-layout
+   :body    (page-layout
              title content (:title settings) (:tagline settings)
              (:footer settings) (:source settings) (:base-path settings))})
 
-;; Create app function with topics-data and settings as parameters
 (defn create-app [topics-data settings]
   (fn [{:keys [request-method uri query-string]}]
     (let [path   (strip-base-path uri (:base-path settings))
@@ -363,7 +341,6 @@
                        (error-content (:base-path settings) :page-not-found)
                        settings)))))
 
-;; Show help
 (defn show-help []
   (println "Usage: topics [options]")
   (println "\nOptions:")
@@ -375,10 +352,9 @@
     ;; Parse command line arguments with simplified handling
     (let [opts (cli/parse-opts args {:spec cli-options})]
       (when (:help opts) (show-help))
-      (when (:version opts) (print-version))
-      (log/merge-config! {:min-level (:log-level opts)})
+      (log/merge-config! {:min-level (keyword (:log-level opts))})
       ;; Load Topics data
-      (let [topics-data (load-topics-data (:topics opts))]
+      (let [topics-data (load-topics-data (:contents opts))]
         ;; Start the server
         (log/info (str "Starting server at http://localhost:" (:port opts)))
         (if (empty? (:base-path opts))
@@ -387,8 +363,7 @@
         (log/info "Site title:" (:title opts))
         (log/info "Site tagline:" (:tagline opts))
         (log/info "Topics source:" (:source opts))
-        (server/run-server (create-app topics-data opts)
-                           {:port (:port opts)})
+        (server/run-server (create-app topics-data opts) {:port (:port opts)})
         (log/info "Server started. Press Ctrl+C to stop.")
         @(promise)))
     (catch Exception e
@@ -396,6 +371,5 @@
       (.printStackTrace e)
       (System/exit 1))))
 
-;; Main entry point
 (when (= *file* (System/getProperty "babashka.file"))
   (apply -main *command-line-args*))
