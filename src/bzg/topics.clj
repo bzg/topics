@@ -27,7 +27,8 @@
             [cheshire.core :as json]
             [clojure.string :as str]
             [babashka.cli :as cli]
-            [taoensso.timbre :as log]))
+            [taoensso.timbre :as log]
+            [selmer.parser :as selmer]))
 
 (def cli-options
   {;; App contents options
@@ -129,13 +130,14 @@
 (defn get-topics-by-category [category topics-data]
   (filter #(= (last (:path %)) category) topics-data))
 
-(defn page-layout [page-title content title tagline footer source base-path]
-  (str "<!DOCTYPE html>
+;; Define the layout template
+(def layout-template
+  "<!DOCTYPE html>
 <html lang=\"fr\" data-theme=\"light\">
 <head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>" page-title " - " title "</title>
+  <title>{{page-title}} - {{title}}</title>
   <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
   <script src=\"https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js\"></script>
@@ -171,23 +173,35 @@
   <header class=\"site-header\">
   <div class=\"container\">
   <div>
-  <h1><a href=\"" (with-base-path "/" base-path) "\">" title "</a></h1>
-  <p>" tagline "</p>
+  <h1><a href=\"{{home-link}}\">{{title}}</a></h1>
+  <p>{{tagline}}</p>
   </div>
   </div>
   </header>
 
   <main class=\"container\">
-  " content "
+  {{content|safe}}
   </main>
 
   <footer>
   <div class=\"container\">
-  <div class=\"footer\"><p><a target=\"new\" href=\"" source "\">Source des contenus</a> · " footer "</p>
+  <div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">Source des contenus</a> · {{footer|safe}}</p>
   </div>
   </footer>
   </body>
-  </html>"))
+  </html>")
+
+;; Updated page-layout function
+(defn page-layout [page-title content title tagline footer source base-path]
+  (selmer/render
+   layout-template
+   {:page-title page-title
+    :content    content
+    :title      title
+    :tagline    tagline
+    :footer     footer
+    :source     source
+    :home-link  (with-base-path "/" base-path)}))
 
 (defn home-content [topics-data base-path]
   (str "<div>
@@ -258,7 +272,7 @@
        "</div>
   </div>"))
 
-(defn search-results-content [query results base-path]
+(defn search-results-content [query results]
   (if (empty? query)
     ""  ;; Empty string when no query
     (str "<div>"
@@ -371,7 +385,7 @@
         (let [query   (:q params)
               results (search-topics query topics-data)]
           (fragment-response
-           (search-results-content query results (:base-path settings))))
+           (search-results-content query results)))
         [:get "/topics"]
         (let [id   (:id params)
               item (first (filter #(= (:title %) id) topics-data))]
@@ -411,7 +425,7 @@
           (log/info "Running at base path:" (:base-path opts)))
         (log/info "Site title:" (:title opts))
         (log/info "Site tagline:" (:tagline opts))
-        (log/info "Topics source:" (:source opts))
+        (log/info "Topics source:" (:contents-sources opts))
         (server/run-server (create-app topics-data opts) {:port (:port opts)})
         (log/info "Server started. Press Ctrl+C to stop.")
         @(promise)))
