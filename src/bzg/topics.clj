@@ -87,9 +87,9 @@
 (defn sanitize-search-query [^String query]
   (when query
     (-> query
-        (str/replace #"[<>]" "")           
-        (str/replace #"[\\'\";`]" "")      
-        (str/trim))))                      
+        (str/replace #"[<>]" "")
+        (str/replace #"[\\'\";`]" "")
+        (str/trim))))
 
 (defn normalize-text [^String text]
   (when text
@@ -138,6 +138,7 @@
   <title>" page-title " - " title "</title>
   <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
+  <script src=\"https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js\"></script>
   <style>
   /* Custom styles */
   .container {max-width: 1200px; margin: 0 auto; padding: 0 1rem;}
@@ -159,6 +160,11 @@
   .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
   .alert-error {background-color: #ffe3e3; border: 1px solid #ffa8a8; color: #e03131;}
   .footer {text-align: center;font-size: .8rem;}
+  /* Added for HTMX search */
+  .search-results {margin-top: 1rem;}
+  .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
+  .htmx-request .htmx-indicator {opacity: 1;}
+  .htmx-request.htmx-indicator {opacity: 1;}
   </style>
   </head>
   <body>
@@ -185,10 +191,25 @@
 
 (defn home-content [topics-data base-path]
   (str "<div>
-  <form action=\"" (with-base-path "/search" base-path) "\" method=\"get\" class=\"search-form\" role=\"search\">
-  <input placeholder=\"Rechercher\" type=\"search\" id=\"search-input\" name=\"q\">
-  <button type=\"submit\">Rechercher</button>
-  </form>
+  <div class=\"search-container\">
+    <input placeholder=\"Rechercher\"
+           type=\"search\"
+           id=\"search-input\"
+           name=\"q\"
+           hx-get=\"" (with-base-path "/search-results" base-path) "\"
+           hx-trigger=\"keyup changed delay:300ms, search\"
+           hx-target=\"#search-results\"
+           hx-indicator=\".htmx-indicator\">
+    <div class=\"htmx-indicator\">
+      <small>Recherche...</small>
+    </div>
+  </div>
+
+  <div id=\"search-results\" class=\"search-results\">
+    <!-- Search results will appear here -->
+  </div>
+
+  <h2>Catégories</h2>
   <div class=\"grid\">"
        (str/join "\n"
                  (for [category (get-categories topics-data)]
@@ -236,6 +257,23 @@
               "</div>"))
        "</div>
   </div>"))
+
+(defn search-results-content [query results base-path]
+  (if (empty? query)
+    ""  ;; Empty string when no query
+    (str "<div>"
+         (if (empty? results)
+           "<div class=\"alert alert-info\">
+  <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
+  </div>"
+           (str "<p>Résultats pour \"" query "\" (" (count results) ") :</p>"
+                (str/join "\n"
+                          (for [item results]
+                            (str "<details>
+  <summary>" (:title item) "</summary>
+  <div>" (:content item) "</div>
+  </details>")))))
+         "</div>")))
 
 (defn topics-content [item base-path]
   (str "<div>
@@ -296,6 +334,11 @@
              title content (:title settings) (:tagline settings)
              (:footer settings) (:source settings) (:base-path settings))})
 
+(defn fragment-response [content]
+  {:status  200
+   :headers {"Content-Type" "text/html; charset=utf-8"}
+   :body    content})
+
 (defn create-app [topics-data settings]
   (fn [{:keys [request-method uri query-string]}]
     (let [path   (strip-base-path uri (:base-path settings))
@@ -323,6 +366,12 @@
                          (str "Résultats pour : " query)
                          (search-content query results (:base-path settings))
                          settings))
+        ;; New endpoint for HTMX search results
+        [:get "/search-results"]
+        (let [query   (:q params)
+              results (search-topics query topics-data)]
+          (fragment-response
+           (search-results-content query results (:base-path settings))))
         [:get "/topics"]
         (let [id   (:id params)
               item (first (filter #(= (:title %) id) topics-data))]
