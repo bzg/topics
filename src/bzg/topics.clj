@@ -156,7 +156,7 @@
   .back-link {display: inline-flex; align-items: center; margin-bottom: 1rem;}
   .back-link::before {content: '←'; margin-right: 0.5rem;}
   .search-form {margin-bottom: 3rem;}
-  .search-container {display: flex; gap: 0.5rem;}
+  .search-container {display: flex; gap: 0.5rem; margin-bottom: 2rem;}
   .search-container input[type=\"search\"] {flex-grow: 1;}
   .alert {padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;}
   .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
@@ -191,7 +191,6 @@
   </body>
   </html>")
 
-;; Updated page-layout function
 (defn page-layout [page-title content title tagline footer source base-path]
   (selmer/render
    layout-template
@@ -203,105 +202,142 @@
     :source     source
     :home-link  (with-base-path "/" base-path)}))
 
-(defn home-content [topics-data base-path]
-  (str "<div>
-  <div class=\"search-container\">
+(defn search-form-component [base-path search-query]
+  (str "<div class=\"search-container\">
     <input placeholder=\"Rechercher\"
            type=\"search\"
            id=\"search-input\"
            name=\"q\"
-           hx-get=\"" (with-base-path "/search-results" base-path) "\"
+           value=\"" (or search-query "") "\"
+           hx-get=\"" (with-base-path "/" base-path) "\"
+           hx-push-url=\"true\"
            hx-trigger=\"keyup changed delay:300ms, search\"
-           hx-target=\"#search-results\"
+           hx-target=\"#topics-content\"
            hx-indicator=\".htmx-indicator\">
     <div class=\"htmx-indicator\">
       <small>Recherche...</small>
     </div>
-  </div>
-
-  <div id=\"search-results\" class=\"search-results\">
-    <!-- Search results will appear here -->
-  </div>
-
-  <h2>Catégories</h2>
-  <div class=\"grid\">"
-       (str/join "\n"
-                 (for [category (get-categories topics-data)]
-                   (str "<div class=\"category-card\">
-  <a href=\"" (with-base-path "/category" base-path) "?name=" (safe-url-encode category) "\">
-  <h3>" category "</h3>
-  <p>" (count (get-topics-by-category category topics-data)) " questions</p>
-  </a>
-  </div>")))
-       "</div>
   </div>"))
 
-(defn category-content [category-name category-topics base-path]
-  (str "<div>
-  <a href=\"" (with-base-path "/" base-path) "\" class=\"back-link\">Retour à l'accueil</a>
-  <h2>" category-name "</h2>
-  <div>"
-       (str/join "\n"
-                 (for [item category-topics]
-                   (str "<details>
-  <summary>" (:title item) "</summary>
-  <div>" (:content item) "</div>
-  </details>")))
-       "</div>
-  </div>"))
-
-(defn search-content [query results base-path]
-  (str "<div>
-  <a href=\"" (with-base-path "/" base-path) "\" class=\"back-link\">Retour à l'accueil</a>
-  <h2>Résultats de recherche</h2>
-  <p>Résultats pour \"" query "\" (" (count results) ") :</p>
-  <div>"
-       (if (empty? results)
-         "<div class=\"alert alert-info\">
-  <h3>Aucun résultat</h3>
-  <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
-  </div>"
-         (str "<div>"
-              (str/join "\n"
-                        (for [item results]
-                          (str "<details>
-  <summary>" (:title item) "</summary>
-  <div>" (:content item) "</div>
-  </details>")))
-              "</div>"))
-       "</div>
-  </div>"))
-
-(defn search-results-content [query results]
-  (if (empty? query)
-    ""  ;; Empty string when no query
-    (str "<div>"
-         (if (empty? results)
+(defn home-content [topics-data base-path search-query category]
+  (let [filtered-topics (cond
+                          ;; Filter by search query if provided
+                          (not-empty search-query)
+                          (search-topics search-query topics-data)
+                          ;; Filter by category if provided
+                          (not-empty category)
+                          (get-topics-by-category category topics-data)
+                          ;; Otherwise show all categories
+                          :else
+                          nil)]
+    (str
+     ;; Search form is always visible
+     (search-form-component base-path search-query)
+     ;; Dynamic content based on search/category state
+     "<div id=\"topics-content\">"
+     (if (or (not-empty search-query) (not-empty category))
+       ;; Show search/category results
+       (cond
+         ;; Search results
+         (not-empty search-query)
+         (if (empty? filtered-topics)
            "<div class=\"alert alert-info\">
-  <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
-  </div>"
-           (str "<p>Résultats pour \"" query "\" (" (count results) ") :</p>"
+                <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
+                </div>"
+           (str "<div>"
                 (str/join "\n"
-                          (for [item results]
+                          (for [item filtered-topics]
                             (str "<details>
-  <summary>" (:title item) "</summary>
-  <div>" (:content item) "</div>
-  </details>")))))
-         "</div>")))
+                                      <summary>" (:title item) "</summary>
+                                      <div>" (:content item) "</div>
+                                      </details>")))
+                "</div>"))
+         ;; Category results
+         (not-empty category)
+         (if (empty? filtered-topics)
+           "<div class=\"alert alert-info\">
+                <p>Aucun résultat trouvé dans cette catégorie.</p>
+                </div>"
+           (str "<div>"
+                (str/join "\n"
+                          (for [item filtered-topics]
+                            (str "<details>
+                                      <summary>" (:title item) "</summary>
+                                      <div>" (:content item) "</div>
+                                      </details>")))
+                "</div>"))
+         :else "")
+       ;; Show categories grid (default home view)
+       (str "<div class=\"grid\">"
+            (str/join "\n"
+                      (for [category (get-categories topics-data)]
+                        (str "<div class=\"category-card\">
+                             <a href=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
+                                hx-get=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
+                                hx-push-url=\"true\"
+                                hx-target=\"#topics-content\">
+                             <h3>" category "</h3>
+                             <p>" (count (get-topics-by-category category topics-data)) " questions</p>
+                             </a>
+                             </div>")))
+            "</div>"))
+     "</div>")))
 
-(defn topics-content [item base-path]
-  (str "<div>
-  <a href=\"javascript:history.back()\" class=\"back-link\">Retour</a>
-  <article>
-  <h2>" (:title item) "</h2>
-  <div>
-  " (:content item) "
-  </div>
-  <p>
-  Catégorie : <a href=\"" (with-base-path "/category" base-path) "?name=" (safe-url-encode (last (:path item))) "\">" (last (:path item)) "</a>
-  </p>
-  </article>
-  </div>"))
+;; For direct fragment responses (HTMX partials)
+(defn topics-content-fragment [topics-data base-path search-query category]
+  (let [filtered-topics (cond
+                          (not-empty search-query)
+                          (search-topics search-query topics-data)
+                          (not-empty category)
+                          (get-topics-by-category category topics-data)
+                          :else nil)]
+    (if (or (not-empty search-query) (not-empty category))
+      ;; Show search/category results
+      (cond
+        ;; Search results
+        (not-empty search-query)
+        (if (empty? filtered-topics)
+          "<div class=\"alert alert-info\">
+             <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
+           </div>"
+          (str "<div>"
+               (str/join "\n"
+                         (for [item filtered-topics]
+                           (str "<details>
+                                     <summary>" (:title item) "</summary>
+                                     <div>" (:content item) "</div>
+                                     </details>")))
+               "</div>"))
+        ;; Category results
+        (not-empty category)
+        (if (empty? filtered-topics)
+          "<div class=\"alert alert-info\">
+                <p>Aucun résultat trouvé dans cette catégorie.</p>
+                </div>"
+          (str "<div>"
+               (str/join "\n"
+                         (for [item filtered-topics]
+                           (str "<details>
+                                     <summary>" (:title item) "</summary>
+                                     <div>" (:content item) "</div>
+                                     </details>")))
+               "</div>"))
+        :else "")
+      ;; Show categories grid (default home view)
+      (str "<div class=\"grid\">"
+           (str/join
+            "\n"
+            (for [category (get-categories topics-data)]
+              (str "<div class=\"category-card\">
+                      <a href=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
+                         hx-get=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
+                         hx-push-url=\"true\"
+                         hx-target=\"#topics-content\">
+                      <h3>" category "</h3>
+                       <p>" (count (get-topics-by-category category topics-data)) " topics</p>
+                       </a>
+                       </div>")))
+           "</div>"))))
 
 (defn error-content [base-path type]
   (let [title   (if (= type :not-found) "Contenu introuvable" "Page non trouvée")
@@ -311,14 +347,14 @@
         action  (if (= type :not-found)
                   "Vérifiez l'URL ou effectuez une nouvelle recherche."
                   "Vérifiez l'URL ou retournez à l'accueil.")]
-    (str "<div>
-  <a href=\"" (with-base-path "/" base-path) "\" class=\"back-link\">Retour à l'accueil</a>
-  <h2>" title "</h2>
-  <div class=\"alert alert-error\">
-  <h3>" message "</h3>
-  <p>" action "</p>
-  </div>
-  </div>")))
+    (str (search-form-component base-path nil)
+         "<div id=\"topics-content\">
+          <h2>" title "</h2>
+          <div class=\"alert alert-error\">
+          <h3>" message "</h3>
+          <p>" action "</p>
+          </div>
+          </div>")))
 
 (defn strip-base-path [uri base-path]
   (let [base-len (count base-path)]
@@ -354,50 +390,26 @@
    :body    content})
 
 (defn create-app [topics-data settings]
-  (fn [{:keys [request-method uri query-string]}]
-    (let [path   (strip-base-path uri (:base-path settings))
-          params (parse-query-string query-string)]
+  (fn [{:keys [request-method uri query-string headers]}]
+    (let [path            (strip-base-path uri (:base-path settings))
+          params          (parse-query-string query-string)
+          search-query    (:q params)
+          category        (:category params)
+          is-htmx-request (get headers "hx-request")]
       (case [request-method path]
         [:get "/"]
-        (html-response 200 "Accueil"
-                       (home-content topics-data (:base-path settings))
-                       settings)
+        (if is-htmx-request
+          ;; Return just the fragment for HTMX requests
+          (fragment-response
+           (topics-content-fragment topics-data (:base-path settings) search-query category))
+          ;; Return full page for direct browser requests
+          (html-response 200 "Accueil"
+                         (home-content topics-data (:base-path settings) search-query category)
+                         settings))
         [:get "/robots.txt"]
         {:status  200
          :headers {"Content-Type" "text/plain"}
          :body    "User-agent: *\nAllow: /\n"}
-        [:get "/category"]
-        (let [category-name   (:name params)
-              category-topics (get-topics-by-category category-name topics-data)]
-          (html-response 200
-                         (str "Catégorie : " category-name)
-                         (category-content category-name category-topics (:base-path settings))
-                         settings))
-        [:get "/search"]
-        (let [query   (:q params)
-              results (search-topics query topics-data)]
-          (html-response 200
-                         (str "Résultats pour : " query)
-                         (search-content query results (:base-path settings))
-                         settings))
-        ;; New endpoint for HTMX search results
-        [:get "/search-results"]
-        (let [query   (:q params)
-              results (search-topics query topics-data)]
-          (fragment-response
-           (search-results-content query results)))
-        [:get "/topics"]
-        (let [id   (:id params)
-              item (first (filter #(= (:title %) id) topics-data))]
-          (if item
-            (html-response 200
-                           (:title item)
-                           (topics-content item (:base-path settings))
-                           settings)
-            (html-response 404
-                           "404"
-                           (error-content (:base-path settings) :not-found)
-                           settings)))
         ;; Default route - 404
         (html-response 404
                        "Page non trouvée"
