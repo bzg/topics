@@ -18,7 +18,7 @@
 ;;
 ;; [ {
 ;;   "title" : "Topic title",
-;;   "content" : "<p>Content as HTML",
+;;   "content" : "<p>Content as HTML</p>",
 ;;   "path" : [ "Section", "Subsection (as category)" ]
 ;; } ]
 
@@ -32,18 +32,17 @@
 
 (def cli-options
   {;; App contents options
-   :contents         {:alias :c :desc "Path to contents JSON file" :default "topics.json"}
-   :contents-sources {:alias :C :desc "Path to contents source" :default "[local]"}
+   :topics         {:alias :t :desc "Path to topics JSON file" :ref "<file|url>"}
+   :topics-sources {:alias :s :desc "Path to topics public URL" :ref "<url>"}
    ;; App UI options
-   :title            {:alias :t :desc "Website title" :default "Topics"}
-   :tagline          {:alias :T :desc "Website tagline" :default "A few topics to explore"}
-   :footer           {:alias :f :desc "Footer text" :default "Made with <a href=\"https://github.com/bzg/topics\">Topics</a>"}
+   :title          {:alias :T :desc "Website title" :ref "<string>" :default "Topics"}
+   :tagline        {:alias :L :desc "Website tagline" :ref "<string>" :default "Topics to explore"}
+   :footer         {:alias :F :desc "Footer text" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
    ;; App options
-   :log-level        {:alias :l        :desc    "Set log level (debug, info, warn, error)"
-                      :ref   "<level>" :default "info" :coerce :string}
-   :base-path        {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :default ""}
-   :port             {:alias :p :desc "Port number for server" :default 8080 :coerce :int}
-   :help             {:alias :h :desc "Show help" :type :boolean}})
+   :log-level      {:alias :l :desc "Set log level (debug, info, warn, error)" :ref "<string>" :default "info" :coerce :string}
+   :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
+   :port           {:alias :p :desc "Port number for server" :ref "<int>" :default 8080 :coerce :int}
+   :help           {:alias :h :desc "Show help" :type :boolean}})
 
 (defn with-base-path [path base-path]
   (str (str/replace base-path #"/$" "") path))
@@ -438,7 +437,7 @@
       (when (:help opts) (show-help))
       (log/merge-config! {:min-level (keyword (:log-level opts))})
       ;; Load Topics data
-      (let [topics-data (load-topics-data (:contents opts))]
+      (let [topics-data (load-topics-data (:topics opts))]
         ;; Start the server
         (log/info (str "Starting server at http://localhost:" (:port opts)))
         (if (empty? (:base-path opts))
@@ -446,7 +445,7 @@
           (log/info "Running at base path:" (:base-path opts)))
         (log/info "Site title:" (:title opts))
         (log/info "Site tagline:" (:tagline opts))
-        (log/info "Topics source:" (:contents-sources opts))
+        (log/info "Topics source:" (:topics-sources opts))
         (server/run-server (create-app topics-data opts) {:port (:port opts)})
         (log/info "Server started. Press Ctrl+C to stop.")
         @(promise)))
