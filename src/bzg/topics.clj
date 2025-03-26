@@ -162,6 +162,7 @@
   .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
   .alert-error {background-color: #ffe3e3; border: 1px solid #ffa8a8; color: #e03131;}
   .footer {text-align: center;font-size: .8rem;}
+  .clear-button {border: 1px solid; border-radius: 1rem;}
   /* Added for HTMX search */
   .search-results {margin-top: 1rem;}
   .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
@@ -214,6 +215,14 @@
            hx-trigger=\"keyup changed delay:300ms, search\"
            hx-target=\"#topics-content\"
            hx-indicator=\".htmx-indicator\">
+    <button type=\"button\"
+            class=\"clear-button" (if (empty? search-query) " hidden" "") "\"
+            title=\"Effacer la recherche\"
+            aria-label=\"Effacer la recherche\"
+            hx-get=\"" (with-base-path "/" base-path) "\"
+            hx-push-url=\"true\"
+            hx-target=\"#topics-content\"
+            onclick=\"document.getElementById('search-input').value=''\">X</button>
     <div class=\"htmx-indicator\">
       <small>Recherche...</small>
     </div>
@@ -277,7 +286,7 @@
                                 hx-push-url=\"true\"
                                 hx-target=\"#topics-content\">
                              <h3>" category "</h3>
-                             <p>" (count (get-topics-by-category category topics-data)) " questions</p>
+                             <p>" (count (get-topics-by-category category topics-data)) " topics</p>
                              </a>
                              </div>")))
             "</div>"))
