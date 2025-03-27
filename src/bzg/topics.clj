@@ -60,6 +60,7 @@
         :check-url-home          "Vérifiez l'URL ou retournez à l'accueil."
         :home-title              "Accueil"
         :content-source          "Source des contenus"
+        :skip-to-content         "Passer au contenu"
         :lang                    "fr"}
    :en {:search-placeholder      "Search"
         :clear-search            "Clear search"
@@ -75,33 +76,31 @@
         :check-url-home          "Check the URL or return to the homepage."
         :home-title              "Home"
         :content-source          "Content source"
+        :skip-to-content         "Skip to content"
         :lang                    "en"}})
 
 (defn detect-format [source format-option]
   (if (= format-option "auto")
-    ;; Auto-detect from file extension
     (cond
-      (re-find #"(?i)\.json$" source) :json
-      (re-find #"(?i)\.edn$" source) :edn
+      (re-find #"(?i)\.edn$" source)        :edn
       (re-find #"(?i)\.(yaml|yml)$" source) :yaml
-      :else :json) ; Default to JSON
-    ;; Use explicitly specified format
+      :else                                 :json)
     (keyword format-option)))
 
 (defn load-topics-data [source & [format-option]]
   (try
     (log/info "Loading Topics data from" source)
     (let [content (slurp source)
-          format (if format-option
-                   (detect-format source format-option)
-                   :json) ; Default to JSON if no format specified
-          _ (log/info "Using format:" (name format))
-          data (case format
-                 :json (json/parse-string content true)
-                 :edn (edn/read-string content)
-                 :yaml (yaml/parse-string content)
-                 (do (log/warn "Unknown format" format "defaulting to JSON")
-                     (json/parse-string content true)))]
+          format  (if format-option
+                    (detect-format source format-option)
+                    :json) ; Default to JSON if no format specified
+          _       (log/info "Using format:" (name format))
+          data    (case format
+                    :json (json/parse-string content true)
+                    :edn  (edn/read-string content)
+                    :yaml (yaml/parse-string content)
+                    (do (log/warn "Unknown format" format "defaulting to JSON")
+                        (json/parse-string content true)))]
       (log/info "Loaded" (count data) "Topics items")
       data)
     (catch Exception e
@@ -116,7 +115,7 @@
 (defn with-base-path [path base-path]
   (str (str/replace base-path #"/$" "") path))
 
-(defn safe-url-encode [^String s]
+(defn safe-url-encode [s]
   (when (not-empty s)
     (-> s
         (java.net.URLEncoder/encode "UTF-8")
@@ -125,14 +124,14 @@
         (str/replace "%29" ")")
         (str/replace "%2C" ","))))
 
-(defn safe-url-decode [^String s]
+(defn safe-url-decode [s]
   (when (not-empty s)
     (try
       (java.net.URLDecoder/decode s "UTF-8")
       (catch Exception _
         (log/warn "Error decoding URL parameter:" s)))))
 
-(defn strip-html [^String html]
+(defn strip-html [html]
   (when (not-empty html)
     (-> html
         (str/replace #"<[^>]*>" "")
@@ -143,14 +142,14 @@
         (str/replace #"&quot;" "\"")
         (str/replace #"&apos;" "'"))))
 
-(defn sanitize-search-query [^String query]
+(defn sanitize-search-query [query]
   (when (not-empty query)
     (-> query
         (str/replace #"[<>]" "")
         (str/replace #"[\\'\";`]" "")
         (str/trim))))
 
-(defn normalize-text [^String text]
+(defn normalize-text [text]
   (when (not-empty text)
     (-> text
         (str/lower-case)
@@ -170,7 +169,7 @@
         (str/replace #"\s+" " ")
         (str/trim))))
 
-(defn search-topics [^String query topics-data]
+(defn search-topics [query topics-data]
   (when (not-empty query)
     (let [query-norm (normalize-text (sanitize-search-query query))]
       (filter (fn [{:keys [title content path]}]
@@ -200,47 +199,187 @@
     <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
     <script src=\"https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js\"></script>
     <style>
-      /* Custom styles */
+      /* Custom styles with improved accessibility */
+      :root {
+        --color-primary: #1a73e8;
+        --color-primary-hover: #0d47a1;
+        --color-text: #202124;
+        --color-text-light: #5f6368;
+        --color-background: #ffffff;
+        --color-background-alt: #f8f9fa;
+        --color-border: #dee2e6;
+        --color-focus-outline: #4285f4;
+        --color-focus-ring: rgba(66, 133, 244, 0.4);
+        --color-alert-info-bg: #e8f0fe;
+        --color-alert-info-border: #aecbfa;
+        --color-alert-info-text: #174ea6;
+        --color-alert-error-bg: #fce8e6;
+        --color-alert-error-border: #f6aea9;
+        --color-alert-error-text: #c5221f;
+      }
+
+      /* Improve keyboard focus visibility */
+      *:focus {
+        outline: 2px solid var(--color-focus-outline) !important;
+        outline-offset: 2px !important;
+        box-shadow: 0 0 0 4px var(--color-focus-ring) !important;
+      }
+
+      .skip-link {
+        position: absolute;
+        top: -40px;
+        left: 0;
+        background: var(--color-primary);
+        color: white;
+        padding: 8px;
+        z-index: 100;
+        transition: top 0.3s;
+      }
+      .skip-link:focus {
+        top: 0;
+      }
+
       .container {max-width: 1200px; margin: 0 auto; padding: 0 1rem;}
-      header.site-header {padding: 1rem 0; background-color: #f8f9fa; margin-bottom: 2rem;}
-      footer {margin-top: 3rem; padding: 2rem 0; background-color: #f8f9fa;}
+      header.site-header {padding: 1rem 0; background-color: var(--color-background-alt); margin-bottom: 2rem;}
+      footer {margin-top: 3rem; padding: 2rem 0; background-color: var(--color-background-alt);}
+
       .category-card {height: 100%; display: flex; flex-direction: column;}
-      .category-card > a {flex-grow: 1; display: flex; flex-direction: column; padding: 1.5rem; text-decoration: none; color: inherit; border: 1px solid #dee2e6; border-radius: 0.5rem; background-color: white; transition: transform 0.2s, box-shadow 0.2s;}
-      .category-card > a:hover {transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);}
-      .grid {display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem;}
-      details {margin-bottom: 1rem; border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem;}
-      details summary {cursor: pointer; font-weight: bold; padding: 0.5rem 0;}
-      details[open] summary {margin-bottom: 1rem;}
-      .back-link {display: inline-flex; align-items: center; margin-bottom: 1rem;}
-      .back-link::before {content: '←'; margin-right: 0.5rem;}
+      .category-card > a {
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 1.5rem;
+        text-decoration: none;
+        color: var(--color-text);
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        background-color: var(--color-background);
+        transition: transform 0.2s, box-shadow 0.2s;
+      }
+      .category-card > a:hover, .category-card > a:focus {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+        text-decoration: none;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 2rem;
+      }
+
+      details {
+        margin-bottom: 1rem;
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 1rem;
+      }
+      details summary {
+        cursor: pointer;
+        font-weight: bold;
+        padding: 0.5rem 0;
+        list-style-position: outside;
+        margin-left: 1.5rem;
+      }
+      details summary::-webkit-details-marker {
+        color: var(--color-primary);
+      }
+      details summary::marker {
+        color: var(--color-primary);
+      }
+      details[open] summary {
+        margin-bottom: 1rem;
+      }
+
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      .back-link::before {
+        content: '←';
+        margin-right: 0.5rem;
+      }
+
       .search-form {margin-bottom: 3rem;}
-      .search-container {display: flex; gap: 0.5rem; margin-bottom: 2rem;}
-      .search-container input[type=\"search\"] {flex-grow: 1;}
-      .alert {padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;}
-      .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
-      .alert-error {background-color: #ffe3e3; border: 1px solid #ffa8a8; color: #e03131;}
-      .footer {text-align: center;font-size: .8rem;}
-      .clear-button {border: 1px solid; border-radius: 1rem;}
+      .search-container {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+        align-items: center;
+      }
+      .search-container input[type=\"search\"] {
+        flex-grow: 1;
+      }
+      .search-container input[type=\"search\"]:focus {
+        border-color: var(--color-focus-outline);
+      }
+
+      .alert {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      .alert-info {
+        background-color: var(--color-alert-info-bg);
+        border: 1px solid var(--color-alert-info-border);
+        color: var(--color-alert-info-text);
+      }
+      .alert-error {
+        background-color: var(--color-alert-error-bg);
+        border: 1px solid var(--color-alert-error-border);
+        color: var(--color-alert-error-text);
+      }
+
+      .footer {
+        text-align: center;
+        font-size: .8rem;
+      }
+
+      .clear-button {
+        border: 1px solid var(--color-border);
+        border-radius: 1rem;
+        padding: 0.25rem 0.5rem;
+        background-color: var(--color-background);
+        color: var(--color-text);
+        cursor: pointer;
+      }
+      .clear-button:hover, .clear-button:focus {
+        background-color: var(--color-background-alt);
+      }
+      .clear-button.hidden {
+        display: none;
+      }
+
       /* Added for HTMX search */
       .search-results {margin-top: 1rem;}
       .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
       .htmx-request .htmx-indicator {opacity: 1;}
       .htmx-request.htmx-indicator {opacity: 1;}
+
+      /* Make sure links are distinguishable by more than just color */
+      a:not(.category-card > a):not(.clear-button) {
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
-    <header class=\"site-header\">
+    <a href=\"#main-content\" class=\"skip-link\">{{skip-to-content}}</a>
+
+    <header class=\"site-header\" role=\"banner\">
       <div class=\"container\">
         <div>
-          <h1><a href=\"{{home-link}}\">{{title}}</a></h1>
+          <h1><a href=\"{{home-link}}\" aria-label=\"{{title}} - {{home-title}}\">{{title}}</a></h1>
           <p>{{tagline}}</p>
         </div>
       </div>
     </header>
-    <main class=\"container\">
+
+    <main class=\"container\" id=\"main-content\" tabindex=\"-1\">
       {% ifequal content-type \"home\" %}
       <!-- Search component -->
-      <div class=\"search-container\">
+      <div class=\"search-container\" role=\"search\">
+        <label for=\"search-input\" class=\"visually-hidden\">{{search-placeholder}}</label>
         <input placeholder=\"{{search-placeholder}}\"
                type=\"search\"
                id=\"search-input\"
@@ -250,34 +389,37 @@
                hx-push-url=\"true\"
                hx-trigger=\"keyup changed delay:300ms, search\"
                hx-target=\"#topics-content\"
-               hx-indicator=\".htmx-indicator\">
+               hx-indicator=\".htmx-indicator\"
+               aria-label=\"{{search-placeholder}}\"
+               aria-controls=\"topics-content\">
         <button type=\"button\"
                 class=\"clear-button{% if search-query|empty? %} hidden{% endif %}\"
+                id=\"clear-search\"
                 title=\"{{clear-search}}\"
                 aria-label=\"{{clear-search}}\"
                 hx-get=\"{{home-link}}\"
                 hx-push-url=\"true\"
                 hx-target=\"#topics-content\"
                 onclick=\"document.getElementById('search-input').value=''\">X</button>
-        <div class=\"htmx-indicator\">
+        <div class=\"htmx-indicator\" aria-live=\"polite\">
           <small>{{searching}}</small>
         </div>
       </div>
 
       <!-- START-HTMX-CONTENT -->
-      <div id=\"topics-content\">
+      <div id=\"topics-content\" aria-live=\"polite\">
 	{% if search-query|not-empty %}
 	<!-- Search results -->
 	{% if topics|empty? %}
-	<div class=\"alert alert-info\">
+	<div class=\"alert alert-info\" role=\"alert\">
           <p>{{no-search-results}}</p>
 	</div>
 	{% else %}
 	<div>
           {% for topic in topics %}
           <details>
-            <summary>{{topic.title}}</summary>
-            <div>{{topic.content|safe}}</div>
+            <summary aria-expanded=\"false\" aria-controls=\"topic-{{forloop.counter}}\">{{topic.title}}</summary>
+            <div id=\"topic-{{forloop.counter}}\">{{topic.content|safe}}</div>
           </details>
           {% endfor %}
 	</div>
@@ -286,34 +428,35 @@
 	{% if category|not-empty %}
 	<!-- Category results -->
 	{% if topics|empty? %}
-        <div class=\"alert alert-info\">
+        <div class=\"alert alert-info\" role=\"alert\">
           <p>{{no-category-results}}</p>
         </div>
 	{% else %}
         <div>
           {% for topic in topics %}
           <details>
-            <summary>{{topic.title}}</summary>
-            <div>{{topic.content|safe}}</div>
+            <summary aria-expanded=\"false\" aria-controls=\"topic-{{forloop.counter}}\">{{topic.title}}</summary>
+            <div id=\"topic-{{forloop.counter}}\">{{topic.content|safe}}</div>
           </details>
           {% endfor %}
         </div>
 	{% endif %}
 	{% else %}
 	<!-- Categories grid -->
-	<div class=\"grid\">
+	<nav aria-label=\"Categories\" class=\"grid\">
           {% for cat-item in categories-with-counts %}
           <div class=\"category-card\">
             <a href=\"{{home-link}}?category={{cat-item.name|url-encode}}\"
                hx-get=\"{{home-link}}?category={{cat-item.name|url-encode}}\"
                hx-push-url=\"true\"
-               hx-target=\"#topics-content\">
+               hx-target=\"#topics-content\"
+               aria-label=\"{{cat-item.name}} - {{cat-item.count}} {{topics-count}}\">
               <h3>{{cat-item.name}}</h3>
               <p>{{cat-item.count}} {{topics-count}}</p>
             </a>
           </div>
           {% endfor %}
-	</div>
+	</nav>
 	{% endif %}
 	{% endif %}
       </div>
@@ -322,7 +465,8 @@
 
       {% ifequal content-type \"error\" %}
       <!-- Error pages -->
-      <div class=\"search-container\">
+      <div class=\"search-container\" role=\"search\">
+        <label for=\"search-input\" class=\"visually-hidden\">{{search-placeholder}}</label>
         <input placeholder=\"{{search-placeholder}}\"
                type=\"search\"
                id=\"search-input\"
@@ -332,26 +476,64 @@
                hx-push-url=\"true\"
                hx-trigger=\"keyup changed delay:300ms, search\"
                hx-target=\"#topics-content\"
-               hx-indicator=\".htmx-indicator\">
-        <div class=\"htmx-indicator\">
+               hx-indicator=\".htmx-indicator\"
+               aria-label=\"{{search-placeholder}}\"
+               aria-controls=\"topics-content\">
+        <div class=\"htmx-indicator\" aria-live=\"polite\">
           <small>{{searching}}</small>
         </div>
       </div>
-      <div id=\"topics-content\">
+      <div id=\"topics-content\" aria-live=\"polite\">
         <h2>{% ifequal error-type \"not-found\" %}{{content-not-found-title}}{% else %}{{page-not-found-title}}{% endifequal %}</h2>
-        <div class=\"alert alert-error\">
+        <div class=\"alert alert-error\" role=\"alert\">
           <h3>{% ifequal error-type \"not-found\" %}{{article-not-found}}{% else %}{{page-not-found}}{% endifequal %}</h3>
           <p>{% ifequal error-type \"not-found\" %}{{check-url-search}}{% else %}{{check-url-home}}{% endifequal %}</p>
         </div>
       </div>
       {% endifequal %}
     </main>
-    <footer>
+
+    <footer role=\"contentinfo\">
       <div class=\"container\">
-        <div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">{{content-source}}</a> · {{footer|safe}}</p>
+        <div class=\"footer\"><p><a target=\"_blank\" rel=\"noopener\" href=\"{{source}}\" aria-label=\"{{content-source}}\">{{content-source}}</a> · {{footer|safe}}</p>
         </div>
       </div>
     </footer>
+
+    <script>
+      // Add accessibility enhancements through JavaScript
+      document.addEventListener('DOMContentLoaded', function() {
+        // Add aria-expanded attribute handler for details elements
+        const detailsElements = document.querySelectorAll('details');
+        detailsElements.forEach(function(details) {
+          const summary = details.querySelector('summary');
+          if (summary) {
+            // Set initial aria-expanded state
+            summary.setAttribute('aria-expanded', details.hasAttribute('open'));
+
+            // Update aria-expanded when details state changes
+            details.addEventListener('toggle', function() {
+              summary.setAttribute('aria-expanded', details.hasAttribute('open'));
+            });
+          }
+        });
+
+        // Make the clear button accessible
+        const clearButton = document.getElementById('clear-search');
+        const searchInput = document.getElementById('search-input');
+
+        if (clearButton && searchInput) {
+          // Show/hide clear button based on input content
+          searchInput.addEventListener('input', function() {
+            if (this.value) {
+              clearButton.classList.remove('hidden');
+            } else {
+              clearButton.classList.add('hidden');
+            }
+          });
+        }
+      });
+    </script>
   </body>
 </html>")
 
@@ -374,27 +556,27 @@
         (swap! config assoc :template default-template)))))
 
 (defn prepare-template-data [topics-data search-query category base-path]
-  (let [filtered-topics (cond
-                          (not-empty search-query) (search-topics search-query topics-data)
-                          (not-empty category)     (get-topics-by-category category topics-data)
-                          :else                    nil)
-        categories (get-categories topics-data)
-        category-counts (into {} (map (fn [c] [c (count (get-topics-by-category c topics-data))]) categories))
+  (let [filtered-topics        (cond
+                                 (not-empty search-query) (search-topics search-query topics-data)
+                                 (not-empty category)     (get-topics-by-category category topics-data)
+                                 :else                    nil)
+        categories             (get-categories topics-data)
+        category-counts        (into {} (map (fn [c] [c (count (get-topics-by-category c topics-data))]) categories))
         categories-with-counts (map (fn [cat] {:name cat :count (get category-counts cat)}) categories)]
-    {:search-query search-query
-     :category category
-     :topics filtered-topics
-     :categories categories
-     :category-counts category-counts
+    {:search-query           search-query
+     :category               category
+     :topics                 filtered-topics
+     :categories             categories
+     :category-counts        category-counts
      :categories-with-counts categories-with-counts
-     :home-link (with-base-path "/" base-path)}))
+     :home-link              (with-base-path "/" base-path)}))
 
 (defn extract-htmx-content [rendered-template]
   (let [start-idx (str/index-of rendered-template htmx-content-start-marker)
-        end-idx (str/index-of rendered-template htmx-content-end-marker)]
+        end-idx   (str/index-of rendered-template htmx-content-end-marker)]
     (when (and start-idx end-idx (< start-idx end-idx))
       (let [content-start (+ start-idx (count htmx-content-start-marker))
-            content-end end-idx]
+            content-end   end-idx]
         (str/trim (subs rendered-template content-start content-end))))))
 
 (defn render-page [content-type data title tagline footer source base-path lang-key]
@@ -404,12 +586,12 @@
      (merge
       ;; Base template data
       {:content-type content-type
-       :title title
-       :tagline tagline
-       :footer footer
-       :source source
-       :home-link (with-base-path "/" base-path)
-       :page-title (get data :page-title (:home-title lang))}
+       :title        title
+       :tagline      tagline
+       :footer       footer
+       :source       source
+       :home-link    (with-base-path "/" base-path)
+       :page-title   (get data :page-title (:home-title lang))}
       lang
       data))))
 
@@ -429,7 +611,7 @@
                   (get-in ui-strings [lang-key :page-not-found-title]))}
    title tagline footer source base-path lang-key))
 
-(defn strip-base-path [^String uri ^String base-path]
+(defn strip-base-path [uri base-path]
   (let [base-len (count base-path)]
     (if (and (seq base-path)
              (str/starts-with? uri base-path))
@@ -439,7 +621,7 @@
           (str "/" path)))
       uri)))
 
-(defn parse-query-string [^String query-string]
+(defn parse-query-string [query-string]
   (when (not-empty query-string)
     (try
       (into {}
@@ -462,16 +644,16 @@
         [:get "/"]
         (if is-htmx-request
           ;; For HTMX requests, render the full page but extract just the content portion
-          (let [full-page (home-page
-                           topics-data
-                           (:base-path settings)
-                           search-query
-                           category
-                           lang-key
-                           (:title settings)
-                           (:tagline settings)
-                           (:footer settings)
-                           (:source settings))
+          (let [full-page    (home-page
+                              topics-data
+                              (:base-path settings)
+                              search-query
+                              category
+                              lang-key
+                              (:title settings)
+                              (:tagline settings)
+                              (:footer settings)
+                              (:source settings))
                 htmx-content (extract-htmx-content full-page)]
             {:status  200
              :headers {"Content-Type" "text/html; charset=utf-8"}
@@ -494,16 +676,16 @@
          :headers {"Content-Type" "text/plain"}
          :body    "User-agent: *\nAllow: /\n"}
         ;; Default - return 404
-        {:status 404
+        {:status  404
          :headers {"Content-Type" "text/html; charset=utf-8"}
-         :body (error-page
-                :not-found
-                (:base-path settings)
-                lang-key
-                (:title settings)
-                (:tagline settings)
-                (:footer settings)
-                (:source settings))}))))
+         :body    (error-page
+                   :not-found
+                   (:base-path settings)
+                   lang-key
+                   (:title settings)
+                   (:tagline settings)
+                   (:footer settings)
+                   (:source settings))}))))
 
 (defn show-help []
   (println "Usage: topics [options]")
