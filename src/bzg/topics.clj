@@ -242,6 +242,7 @@
         </div>
       </div>
 
+      <!-- START-HTMX-CONTENT -->
       <div id=\"topics-content\">
 	{% if search-query|not-empty %}
 	<!-- Search results -->
@@ -279,14 +280,14 @@
 	{% else %}
 	<!-- Categories grid -->
 	<div class=\"grid\">
-          {% for category in categories %}
+          {% for cat-item in categories-with-counts %}
           <div class=\"category-card\">
-            <a href=\"{{home-link}}?category={{category|url-encode}}\"
-               hx-get=\"{{home-link}}?category={{category|url-encode}}\"
+            <a href=\"{{home-link}}?category={{cat-item.name|url-encode}}\"
+               hx-get=\"{{home-link}}?category={{cat-item.name|url-encode}}\"
                hx-push-url=\"true\"
                hx-target=\"#topics-content\">
-              <h3>{{category}}</h3>
-              <p>{{category-counts|get:category}} {{topics-count}}</p>
+              <h3>{{cat-item.name}}</h3>
+              <p>{{cat-item.count}} {{topics-count}}</p>
             </a>
           </div>
           {% endfor %}
@@ -294,6 +295,7 @@
 	{% endif %}
 	{% endif %}
       </div>
+      <!-- END-HTMX-CONTENT -->
       {% endifequal %}
 
       {% ifequal content-type \"error\" %}
@@ -331,57 +333,9 @@
   </body>
 </html>")
 
-(def partial-template
-  "{% if search-query|not-empty %}
-<!-- Search results -->
-{% if topics|empty? %}
-<div class=\"alert alert-info\">
-  <p>{{no-search-results}}</p>
-</div>
-{% else %}
-<div>
-  {% for topic in topics %}
-  <details>
-    <summary>{{topic.title}}</summary>
-    <div>{{topic.content|safe}}</div>
-  </details>
-  {% endfor %}
-</div>
-{% endif %}
-{% else %}
-{% if category|not-empty %}
-<!-- Category results -->
-{% if topics|empty? %}
-<div class=\"alert alert-info\">
-  <p>{{no-category-results}}</p>
-</div>
-{% else %}
-<div>
-  {% for topic in topics %}
-  <details>
-    <summary>{{topic.title}}</summary>
-    <div>{{topic.content|safe}}</div>
-  </details>
-  {% endfor %}
-</div>
-{% endif %}
-{% else %}
-<!-- Categories grid -->
-<div class=\"grid\">
-  {% for category in categories %}
-  <div class=\"category-card\">
-    <a href=\"{{home-link}}?category={{category|url-encode}}\"
-       hx-get=\"{{home-link}}?category={{category|url-encode}}\"
-       hx-push-url=\"true\"
-       hx-target=\"#topics-content\">
-      <h3>{{category}}</h3>
-      <p>{{category-counts|get:category}} {{topics-count}}</p>
-    </a>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-{% endif %}")
+;; Add special markers to identify the HTMX content section
+(def htmx-content-start-marker "<!-- START-HTMX-CONTENT -->")
+(def htmx-content-end-marker "<!-- END-HTMX-CONTENT -->")
 
 (selmer/add-filter! :url-encode safe-url-encode)
 (selmer/add-filter! :get (fn [m k] (get m k)))
@@ -397,20 +351,29 @@
         (log/error (.getMessage e))
         (swap! config assoc :template default-template)))))
 
-;; Common function to prepare data for templates
 (defn prepare-template-data [topics-data search-query category base-path]
   (let [filtered-topics (cond
                           (not-empty search-query) (search-topics search-query topics-data)
                           (not-empty category)     (get-topics-by-category category topics-data)
                           :else                    nil)
         categories (get-categories topics-data)
-        category-counts (into {} (map (fn [c] [c (count (get-topics-by-category c topics-data))]) categories))]
+        category-counts (into {} (map (fn [c] [c (count (get-topics-by-category c topics-data))]) categories))
+        categories-with-counts (map (fn [cat] {:name cat :count (get category-counts cat)}) categories)]
     {:search-query search-query
      :category category
      :topics filtered-topics
      :categories categories
      :category-counts category-counts
+     :categories-with-counts categories-with-counts
      :home-link (with-base-path "/" base-path)}))
+
+(defn extract-htmx-content [rendered-template]
+  (let [start-idx (str/index-of rendered-template htmx-content-start-marker)
+        end-idx (str/index-of rendered-template htmx-content-end-marker)]
+    (when (and start-idx end-idx (< start-idx end-idx))
+      (let [content-start (+ start-idx (count htmx-content-start-marker))
+            content-end end-idx]
+        (str/trim (subs rendered-template content-start content-end))))))
 
 (defn render-page [content-type data title tagline footer source base-path lang-key]
   (let [lang (get ui-strings lang-key)]
@@ -428,13 +391,6 @@
       lang
       data))))
 
-(defn render-partial-content [topics-data search-query category base-path lang-key]
-  (let [template-data (prepare-template-data topics-data search-query category base-path)
-        lang (get ui-strings lang-key)]
-    (selmer/render
-     partial-template
-     (merge lang template-data))))
-
 (defn home-page [topics-data base-path search-query category lang-key title tagline footer source]
   (let [template-data (prepare-template-data topics-data search-query category base-path)]
     (render-page
@@ -451,7 +407,7 @@
                   (get-in ui-strings [lang-key :page-not-found-title]))}
    title tagline footer source base-path lang-key))
 
-(defn strip-base-path [uri base-path]
+(defn strip-base-path [^String uri ^String base-path]
   (let [base-len (count base-path)]
     (if (and (seq base-path)
              (str/starts-with? uri base-path))
@@ -461,8 +417,8 @@
           (str "/" path)))
       uri)))
 
-(defn parse-query-string [query-string]
-  (when query-string
+(defn parse-query-string [^String query-string]
+  (when (not-empty query-string)
     (try
       (into {}
             (for [pair (str/split query-string #"&")]
@@ -470,8 +426,7 @@
                 [(keyword (safe-url-decode k))
                  (safe-url-decode (or v ""))])))  ;; Handle missing values
       (catch Exception e
-        (log/error "Error parsing query string:" (.getMessage e))
-        {}))))
+        (log/error "Error parsing query string:" (.getMessage e))))))
 
 (defn create-app [topics-data settings]
   (fn [{:keys [request-method uri query-string headers]}]
@@ -484,15 +439,21 @@
       (case [request-method path]
         [:get "/"]
         (if is-htmx-request
-          ;; Return only the content portion for htmx requests
-          {:status  200
-           :headers {"Content-Type" "text/html; charset=utf-8"}
-           :body    (render-partial-content
-                     topics-data
-                     search-query
-                     category
-                     (:base-path settings)
-                     lang-key)}
+          ;; For HTMX requests, render the full page but extract just the content portion
+          (let [full-page (home-page
+                           topics-data
+                           (:base-path settings)
+                           search-query
+                           category
+                           lang-key
+                           (:title settings)
+                           (:tagline settings)
+                           (:footer settings)
+                           (:source settings))
+                htmx-content (extract-htmx-content full-page)]
+            {:status  200
+             :headers {"Content-Type" "text/html; charset=utf-8"}
+             :body    htmx-content})
           ;; Return full page for direct browser requests
           {:status  200
            :headers {"Content-Type" "text/html; charset=utf-8"}
@@ -525,10 +486,11 @@
 (defn show-help []
   (println "Usage: topics [options]")
   (println "\nOptions:")
-  (println (cli/format-opts
-            {:spec (->> cli-options
-                        (map (fn [[k v]] [k (dissoc v :default)]))
-                        (into (sorted-map)))}))
+  (println
+   (cli/format-opts
+    {:spec (->> cli-options
+                (map (fn [[k v]] [k (dissoc v :default)]))
+                (into (sorted-map)))}))
   (System/exit 0))
 
 (defn -main [& args]
