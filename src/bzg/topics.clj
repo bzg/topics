@@ -31,18 +31,53 @@
             [selmer.parser :as selmer]))
 
 (def cli-options
-  {;; App contents options
-   :topics         {:alias :t :desc "Path to topics JSON file" :ref "<file|url>"}
+  {:topics         {:alias :t :desc "Path to topics JSON file" :ref "<file|url>"}
    :topics-sources {:alias :s :desc "Path to topics public URL" :ref "<url>"}
-   ;; App UI options
    :title          {:alias :T :desc "Website title" :ref "<string>" :default "Topics"}
    :tagline        {:alias :L :desc "Website tagline" :ref "<string>" :default "Topics to explore"}
    :footer         {:alias :F :desc "Footer text" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
-   ;; App options
    :log-level      {:alias :l :desc "Set log level (debug, info, warn, error)" :ref "<string>" :default "info" :coerce :string}
    :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
    :port           {:alias :p :desc "Port number for server" :ref "<int>" :default 8080 :coerce :int}
    :help           {:alias :h :desc "Show help" :type :boolean}})
+
+(def ui-strings
+  {:fr {:search-placeholder      "Rechercher"
+        :clear-search            "Effacer la recherche"
+        :searching               "Recherche..."
+        :no-search-results       "Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes."
+        :no-category-results     "Aucun résultat trouvé dans cette catégorie."
+        :topics-count            " sujets"
+        :content-not-found-title "Contenu introuvable"
+        :page-not-found-title    "Page non trouvée"
+        :article-not-found       "L'article demandé n'existe pas"
+        :page-not-found          "La page demandée n'existe pas"
+        :check-url-search        "Vérifiez l'URL ou effectuez une nouvelle recherche."
+        :check-url-home          "Vérifiez l'URL ou retournez à l'accueil."
+        :home-title              "Accueil"
+        :content-source          "Source des contenus"
+        :lang                    "fr"}
+   :en {:search-placeholder      "Search"
+        :clear-search            "Clear search"
+        :searching               "Searching..."
+        :no-search-results       "No results match your search. Try with other terms."
+        :no-category-results     "No results found in this category."
+        :topics-count            " topics"
+        :content-not-found-title "Content not found"
+        :page-not-found-title    "Page not found"
+        :article-not-found       "The requested article does not exist"
+        :page-not-found          "The requested page does not exist"
+        :check-url-search        "Check the URL or perform a new search."
+        :check-url-home          "Check the URL or return to the homepage."
+        :home-title              "Home"
+        :content-source          "Content source"
+        :lang                    "en"}})
+
+(defn get-preferred-language [headers]
+  (let [accept-language (get headers "accept-language" "en")]
+    (if (str/starts-with? accept-language "fr")
+      :fr
+      :en)))
 
 (defn with-base-path [path base-path]
   (str (str/replace base-path #"/$" "") path))
@@ -74,7 +109,7 @@
       (log/error "Error loading Topics data from" source ":" (.getMessage e)))))
 
 (defn strip-html [^String html]
-  (when html
+  (when (not-empty html)
     (-> html
         (str/replace #"<[^>]*>" "")
         (str/replace #"&nbsp;" " ")
@@ -85,14 +120,14 @@
         (str/replace #"&apos;" "'"))))
 
 (defn sanitize-search-query [^String query]
-  (when query
+  (when (not-empty query)
     (-> query
         (str/replace #"[<>]" "")
         (str/replace #"[\\'\";`]" "")
         (str/trim))))
 
 (defn normalize-text [^String text]
-  (when text
+  (when (not-empty text)
     (-> text
         (str/lower-case)
         ;; Replace diacritical marks
@@ -112,8 +147,8 @@
         (str/replace #"\s+" " ")
         (str/trim))))
 
-(defn search-topics [query topics-data]
-  (when (seq query)
+(defn search-topics [^String query topics-data]
+  (when (not-empty query)
     (let [query-norm (normalize-text (sanitize-search-query query))]
       (filter (fn [{:keys [title content path]}]
                 (or (str/includes? (normalize-text title) query-norm)
@@ -132,7 +167,7 @@
 ;; Define the layout template
 (def layout-template
   "<!DOCTYPE html>
-<html lang=\"fr\" data-theme=\"light\">
+<html lang=\"{{lang}}\" data-theme=\"light\">
 <head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
@@ -178,33 +213,35 @@
   </div>
   </div>
   </header>
-
   <main class=\"container\">
   {{content|safe}}
   </main>
-
   <footer>
   <div class=\"container\">
-  <div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">Source des contenus</a> · {{footer|safe}}</p>
+  <div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">{{content-source}}</a> · {{footer|safe}}</p>
   </div>
   </footer>
   </body>
   </html>")
 
-(defn page-layout [page-title content title tagline footer source base-path]
-  (selmer/render
-   layout-template
-   {:page-title page-title
-    :content    content
-    :title      title
-    :tagline    tagline
-    :footer     footer
-    :source     source
-    :home-link  (with-base-path "/" base-path)}))
+(defn page-layout [page-title content title tagline footer source base-path lang-key]
+  (let [lang (get ui-strings lang-key)]
+    (selmer/render
+     layout-template
+     {:page-title     page-title
+      :content        content
+      :title          title
+      :tagline        tagline
+      :footer         footer
+      :source         source
+      :home-link      (with-base-path "/" base-path)
+      :lang           (:lang lang)
+      :content-source (:content-source lang)})))
 
-(defn search-form-component [base-path search-query]
-  (str "<div class=\"search-container\">
-    <input placeholder=\"Rechercher\"
+(defn search-form-component [base-path search-query lang-key]
+  (let [lang (get ui-strings lang-key)]
+    (str "<div class=\"search-container\">
+    <input placeholder=\"" (:search-placeholder lang) "\"
            type=\"search\"
            id=\"search-input\"
            name=\"q\"
@@ -216,19 +253,20 @@
            hx-indicator=\".htmx-indicator\">
     <button type=\"button\"
             class=\"clear-button" (if (empty? search-query) " hidden" "") "\"
-            title=\"Effacer la recherche\"
-            aria-label=\"Effacer la recherche\"
+            title=\"" (:clear-search lang) "\"
+            aria-label=\"" (:clear-search lang) "\"
             hx-get=\"" (with-base-path "/" base-path) "\"
             hx-push-url=\"true\"
             hx-target=\"#topics-content\"
             onclick=\"document.getElementById('search-input').value=''\">X</button>
     <div class=\"htmx-indicator\">
-      <small>Recherche...</small>
+      <small>" (:searching lang) "</small>
     </div>
-  </div>"))
+  </div>")))
 
-(defn home-content [topics-data base-path search-query category]
-  (let [filtered-topics (cond
+(defn home-content [topics-data base-path search-query category lang-key]
+  (let [lang            (get ui-strings lang-key)
+        filtered-topics (cond
                           ;; Filter by search query if provided
                           (not-empty search-query)
                           (search-topics search-query topics-data)
@@ -239,8 +277,8 @@
                           :else
                           nil)]
     (str
-     ;; Search form is always visible
-     (search-form-component base-path search-query)
+     ;; Search form always visible
+     (search-form-component base-path search-query lang-key)
      ;; Dynamic content based on search/category state
      "<div id=\"topics-content\">"
      (if (or (not-empty search-query) (not-empty category))
@@ -249,9 +287,9 @@
          ;; Search results
          (not-empty search-query)
          (if (empty? filtered-topics)
-           "<div class=\"alert alert-info\">
-                <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
-                </div>"
+           (str "<div class=\"alert alert-info\">
+                <p>" (:no-search-results lang) "</p>
+                </div>")
            (str "<div>"
                 (str/join "\n"
                           (for [item filtered-topics]
@@ -263,9 +301,9 @@
          ;; Category results
          (not-empty category)
          (if (empty? filtered-topics)
-           "<div class=\"alert alert-info\">
-                <p>Aucun résultat trouvé dans cette catégorie.</p>
-                </div>"
+           (str "<div class=\"alert alert-info\">
+                <p>" (:no-category-results lang) "</p>
+                </div>")
            (str "<div>"
                 (str/join "\n"
                           (for [item filtered-topics]
@@ -285,29 +323,28 @@
                                 hx-push-url=\"true\"
                                 hx-target=\"#topics-content\">
                              <h3>" category "</h3>
-                             <p>" (count (get-topics-by-category category topics-data)) " topics</p>
+                             <p>" (count (get-topics-by-category category topics-data)) (:topics-count lang) "</p>
                              </a>
                              </div>")))
             "</div>"))
      "</div>")))
 
-;; For direct fragment responses (HTMX partials)
-(defn topics-content-fragment [topics-data base-path search-query category]
-  (let [filtered-topics (cond
-                          (not-empty search-query)
-                          (search-topics search-query topics-data)
-                          (not-empty category)
-                          (get-topics-by-category category topics-data)
-                          :else nil)]
+(defn topics-content-fragment [topics-data base-path search-query category lang-key]
+  (let [lang            (get ui-strings lang-key)
+        filtered-topics (cond (not-empty search-query)
+                              (search-topics search-query topics-data)
+                              (not-empty category)
+                              (get-topics-by-category category topics-data)
+                              :else nil)]
     (if (or (not-empty search-query) (not-empty category))
       ;; Show search/category results
       (cond
         ;; Search results
         (not-empty search-query)
         (if (empty? filtered-topics)
-          "<div class=\"alert alert-info\">
-             <p>Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes.</p>
-           </div>"
+          (str "<div class=\"alert alert-info\">
+             <p>" (:no-search-results lang) "</p>
+           </div>")
           (str "<div>"
                (str/join "\n"
                          (for [item filtered-topics]
@@ -319,9 +356,9 @@
         ;; Category results
         (not-empty category)
         (if (empty? filtered-topics)
-          "<div class=\"alert alert-info\">
-                <p>Aucun résultat trouvé dans cette catégorie.</p>
-                </div>"
+          (str "<div class=\"alert alert-info\">
+                <p>" (:no-category-results lang) "</p>
+                </div>")
           (str "<div>"
                (str/join "\n"
                          (for [item filtered-topics]
@@ -342,20 +379,23 @@
                          hx-push-url=\"true\"
                          hx-target=\"#topics-content\">
                       <h3>" category "</h3>
-                       <p>" (count (get-topics-by-category category topics-data)) " topics</p>
+                       <p>" (count (get-topics-by-category category topics-data)) (:topics-count lang) "</p>
                        </a>
                        </div>")))
            "</div>"))))
 
-(defn error-content [base-path type]
-  (let [title   (if (= type :not-found) "Contenu introuvable" "Page non trouvée")
+(defn error-content [base-path type lang-key]
+  (let [lang    (get ui-strings lang-key)
+        title   (if (= type :not-found)
+                  (:content-not-found-title lang)
+                  (:page-not-found-title lang))
         message (if (= type :not-found)
-                  "L'article demandé n'existe pas"
-                  "La page demandée n'existe pas")
+                  (:article-not-found lang)
+                  (:page-not-found lang))
         action  (if (= type :not-found)
-                  "Vérifiez l'URL ou effectuez une nouvelle recherche."
-                  "Vérifiez l'URL ou retournez à l'accueil.")]
-    (str (search-form-component base-path nil)
+                  (:check-url-search lang)
+                  (:check-url-home lang))]
+    (str (search-form-component base-path nil lang-key)
          "<div id=\"topics-content\">
           <h2>" title "</h2>
           <div class=\"alert alert-error\">
@@ -379,7 +419,7 @@
     (try
       (into {}
             (for [pair (str/split query-string #"&")]
-              (let [[k v] (str/split pair #"=" 2)]  ;; Limit to 2 parts
+              (let [[k v] (str/split pair #"=" 2)] ;; Limit to 2 parts
                 [(keyword (safe-url-decode k))
                  (safe-url-decode (or v ""))])))  ;; Handle missing values
       (catch Exception e
@@ -390,7 +430,7 @@
    :headers {"Content-Type" "text/html; charset=utf-8"}
    :body    (page-layout
              title content (:title settings) (:tagline settings)
-             (:footer settings) (:source settings) (:base-path settings))})
+             (:footer settings) (:source settings) (:base-path settings) (:lang-key settings))})
 
 (defn fragment-response [content]
   {:status  200
@@ -403,26 +443,27 @@
           params          (parse-query-string query-string)
           search-query    (:q params)
           category        (:category params)
-          is-htmx-request (get headers "hx-request")]
+          is-htmx-request (get headers "hx-request")
+          lang-key        (get-preferred-language headers)]
       (case [request-method path]
         [:get "/"]
         (if is-htmx-request
           ;; Return just the fragment for HTMX requests
           (fragment-response
-           (topics-content-fragment topics-data (:base-path settings) search-query category))
+           (topics-content-fragment topics-data (:base-path settings) search-query category lang-key))
           ;; Return full page for direct browser requests
-          (html-response 200 "Accueil"
-                         (home-content topics-data (:base-path settings) search-query category)
-                         settings))
+          (html-response 200 (get-in ui-strings [lang-key :home-title])
+                         (home-content topics-data (:base-path settings) search-query category lang-key)
+                         (assoc settings :lang-key lang-key)))
         [:get "/robots.txt"]
         {:status  200
          :headers {"Content-Type" "text/plain"}
          :body    "User-agent: *\nAllow: /\n"}
         ;; Default route - 404
         (html-response 404
-                       "Page non trouvée"
-                       (error-content (:base-path settings) :page-not-found)
-                       settings)))))
+                       (get-in ui-strings [lang-key :page-not-found-title])
+                       (error-content (:base-path settings) :page-not-found lang-key)
+                       (assoc settings :lang-key lang-key))))))
 
 (defn show-help []
   (println "Usage: topics [options]")
@@ -431,8 +472,7 @@
   (System/exit 0))
 
 (defn -main [& args]
-  (try
-    ;; Parse command line arguments with simplified handling
+  (try ;; Parse command line arguments with simplified handling
     (let [opts (cli/parse-opts args {:spec cli-options})]
       (when (:help opts) (show-help))
       (log/merge-config! {:min-level (keyword (:log-level opts))})
@@ -446,7 +486,9 @@
         (log/info "Site title:" (:title opts))
         (log/info "Site tagline:" (:tagline opts))
         (log/info "Topics source:" (:topics-sources opts))
-        (server/run-server (create-app topics-data opts) {:port (:port opts)})
+        (server/run-server
+         (create-app topics-data (assoc opts :source (:topics-sources opts)))
+         {:port (:port opts)})
         (log/info "Server started. Press Ctrl+C to stop.")
         @(promise)))
     (catch Exception e
