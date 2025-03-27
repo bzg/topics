@@ -27,12 +27,15 @@
             [cheshire.core :as json]
             [clojure.string :as str]
             [babashka.cli :as cli]
+            [clj-yaml.core :as yaml]
             [taoensso.timbre :as log]
-            [selmer.parser :as selmer]))
+            [selmer.parser :as selmer]
+            [clojure.edn :as edn]))
 
 (def cli-options
-  {:topics         {:alias :t :desc "Path to topics JSON file" :ref "<file|url>"}
+  {:topics         {:alias :t :desc "Path to topics file (JSON, EDN, or YAML if pod is installed)" :ref "<file|url>"}
    :topics-sources {:alias :s :desc "Path to topics source URL" :ref "<url>"}
+   :format         {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>" :default "auto"}
    :title          {:alias :T :desc "Website title (default \"Topics\")" :ref "<string>" :default "Topics"}
    :tagline        {:alias :L :desc "Website tagline (default \"Topics to explore\")" :ref "<string>" :default "Topics to explore"}
    :footer         {:alias :F :desc "Footer text (default: link to \"Topics\" source code)" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
@@ -74,6 +77,36 @@
         :content-source          "Content source"
         :lang                    "en"}})
 
+(defn detect-format [source format-option]
+  (if (= format-option "auto")
+    ;; Auto-detect from file extension
+    (cond
+      (re-find #"(?i)\.json$" source) :json
+      (re-find #"(?i)\.edn$" source) :edn
+      (re-find #"(?i)\.(yaml|yml)$" source) :yaml
+      :else :json) ; Default to JSON
+    ;; Use explicitly specified format
+    (keyword format-option)))
+
+(defn load-topics-data [source & [format-option]]
+  (try
+    (log/info "Loading Topics data from" source)
+    (let [content (slurp source)
+          format (if format-option
+                   (detect-format source format-option)
+                   :json) ; Default to JSON if no format specified
+          _ (log/info "Using format:" (name format))
+          data (case format
+                 :json (json/parse-string content true)
+                 :edn (edn/read-string content)
+                 :yaml (yaml/parse-string content)
+                 (do (log/warn "Unknown format" format "defaulting to JSON")
+                     (json/parse-string content true)))]
+      (log/info "Loaded" (count data) "Topics items")
+      data)
+    (catch Exception e
+      (log/error "Error loading Topics data from" source ":" (.getMessage e)))))
+
 (defn get-preferred-language [headers]
   (let [accept-language (get headers "accept-language" "en")]
     (if (str/starts-with? accept-language "fr")
@@ -98,16 +131,6 @@
       (java.net.URLDecoder/decode s "UTF-8")
       (catch Exception _
         (log/warn "Error decoding URL parameter:" s)))))
-
-(defn load-topics-data [source]
-  (try
-    (log/info "Loading Topics data from" source)
-    (let [content (slurp source)
-          data    (json/parse-string content true)]
-      (log/info "Loaded" (count data) "Topics items")
-      data)
-    (catch Exception e
-      (log/error "Error loading Topics data from" source ":" (.getMessage e)))))
 
 (defn strip-html [^String html]
   (when (not-empty html)
@@ -138,12 +161,11 @@
         (str/replace #"[òóôõö]" "o")
         (str/replace #"[ùúûü]" "u")
         (str/replace #"[ýÿ]" "y")
-        (str/replace #"[ç]" "c")
-        (str/replace #"[œ]" "oe")
-        (str/replace #"[æ]" "ae")
-        (str/replace #"[ñ]" "n")
+        (str/replace #"[çñ]" #(if (= % "ç") "c" "n"))
+        (str/replace #"œ" "oe")
+        (str/replace #"æ" "ae")
         ;; Remove punctuation and special characters
-        (str/replace #"[.,;:!?'\"/\\(\\)\\[\\]{}]" " ")
+        (str/replace #"[.,;:!?'\"/\\(\\)\\[\\]{}]+" " ")
         ;; Collapse multiple spaces
         (str/replace #"\s+" " ")
         (str/trim))))
@@ -500,21 +522,24 @@
       (log/merge-config! {:min-level (keyword (:log-level opts))})
       ;; Initialize template
       (set-template! (:template opts))
-      ;; Load Topics data
-      (let [topics-data (load-topics-data (:topics opts))]
-        ;; Start the server
-        (log/info (str "Starting server at http://localhost:" (:port opts)))
-        (if (empty? (:base-path opts))
-          (log/info "Running at root path /")
-          (log/info "Running at base path:" (:base-path opts)))
-        (log/info "Site title:" (:title opts))
-        (log/info "Site tagline:" (:tagline opts))
-        (log/info "Topics source:" (:topics-sources opts))
-        (server/run-server
-         (create-app topics-data (assoc opts :source (:topics-sources opts)))
-         {:port (:port opts)})
-        (log/info "Server started. Press Ctrl+C to stop.")
-        @(promise)))
+      ;; Load Topics data with format option
+      (let [topics-data (load-topics-data (:topics opts) (:format opts))]
+        (if (nil? topics-data)
+          (System/exit 1)
+          (do
+            ;; Start the server
+            (log/info (str "Starting server at http://localhost:" (:port opts)))
+            (if (empty? (:base-path opts))
+              (log/info "Running at root path /")
+              (log/info "Running at base path:" (:base-path opts)))
+            (log/info "Site title:" (:title opts))
+            (log/info "Site tagline:" (:tagline opts))
+            (log/info "Topics source:" (:topics-sources opts))
+            (server/run-server
+             (create-app topics-data (assoc opts :source (:topics-sources opts)))
+             {:port (:port opts)})
+            (log/info "Server started. Press Ctrl+C to stop.")
+            @(promise)))))
     (catch Exception e
       (log/error "ERROR:" (.getMessage e))
       (System/exit 1))))
