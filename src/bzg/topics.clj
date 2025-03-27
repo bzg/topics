@@ -32,13 +32,13 @@
 
 (def cli-options
   {:topics         {:alias :t :desc "Path to topics JSON file" :ref "<file|url>"}
-   :topics-sources {:alias :s :desc "Path to topics public URL" :ref "<url>"}
-   :title          {:alias :T :desc "Website title" :ref "<string>" :default "Topics"}
-   :tagline        {:alias :L :desc "Website tagline" :ref "<string>" :default "Topics to explore"}
-   :footer         {:alias :F :desc "Footer text" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
-   :log-level      {:alias :l :desc "Set log level (debug, info, warn, error)" :ref "<string>" :default "info" :coerce :string}
+   :topics-sources {:alias :s :desc "Path to topics source URL" :ref "<url>"}
+   :title          {:alias :T :desc "Website title (default \"Topics\")" :ref "<string>" :default "Topics"}
+   :tagline        {:alias :L :desc "Website tagline (default \"Topics to explore\")" :ref "<string>" :default "Topics to explore"}
+   :footer         {:alias :F :desc "Footer text (default: link to \"Topics\" source code)" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
+   :log-level      {:alias :l :desc "Set log level: debug, info (the default), warn or error" :ref "<string>" :default "info" :coerce :string}
    :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
-   :port           {:alias :p :desc "Port number for server" :ref "<int>" :default 8080 :coerce :int}
+   :port           {:alias :p :desc "Port number for server (default 8080)" :ref "<int>" :default 8080 :coerce :int}
    :help           {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
@@ -459,7 +459,6 @@
         {:status  200
          :headers {"Content-Type" "text/plain"}
          :body    "User-agent: *\nAllow: /\n"}
-        ;; Default route - 404
         (html-response 404
                        (get-in ui-strings [lang-key :page-not-found-title])
                        (error-content (:base-path settings) :page-not-found lang-key)
@@ -468,7 +467,8 @@
 (defn show-help []
   (println "Usage: topics [options]")
   (println "\nOptions:")
-  (println (cli/format-opts {:spec cli-options}))
+  (println (cli/format-opts
+            {:spec (into (sorted-map) (map (fn [[k v]] [k (dissoc v :default)]) cli-options))}))
   (System/exit 0))
 
 (defn -main [& args]
