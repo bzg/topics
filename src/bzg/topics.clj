@@ -21,6 +21,17 @@
 ;;   "content" : "<p>Content as HTML</p>",
 ;;   "path" : [ "Section", "Subsection (as category)" ]
 ;; } ]
+;;
+;; You can set these options in a edn configuration file:
+;;
+;; topics
+;; topics-sources
+;; title
+;; tagline
+;; footer
+;; log-level
+;; base-path
+;; template
 
 (ns bzg.topics
   (:require [org.httpkit.server :as server]
@@ -35,7 +46,7 @@
 (def cli-options
   {:topics         {:alias :t :desc "Path to topics file (JSON, EDN, or YAML if pod is installed)" :ref "<file|url>"}
    :topics-sources {:alias :s :desc "Path to topics source URL" :ref "<url>"}
-   :format         {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>" :default "auto"}
+   :format         {:alias :f :desc "Format of topics file (json, edn, yaml, or auto, the default)" :ref "<string>" :default "auto"}
    :title          {:alias :T :desc "Website title (default \"Topics\")" :ref "<string>" :default "Topics"}
    :tagline        {:alias :L :desc "Website tagline (default \"Topics to explore\")" :ref "<string>" :default "Topics to explore"}
    :footer         {:alias :F :desc "Footer text (default: link to \"Topics\" source code)" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
@@ -43,6 +54,7 @@
    :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
    :port           {:alias :p :desc "Port number for server (default 8080)" :ref "<int>" :default 8080 :coerce :int}
    :template       {:alias :I :desc "Path to custom HTML template file" :ref "<file>" :coerce :string}
+   :config         {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>" :coerce :string}
    :help           {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
@@ -144,7 +156,7 @@
         (str/replace #"<[^>]*>" "")
         (str/replace
          #"&(nbsp|lt|gt|amp|quot|apos);"
-         #(case (second %) "nbsp" " " "lt"   "<" "gt"   ">" "amp"  "&" "quot" "\"" "apos" "'")))))
+         #(case (second %) "nbsp" " " "lt" "<" "gt" ">" "amp" "&" "quot" "\"" "apos" "'")))))
 
 (defn sanitize-search-query [query]
   (when (not-empty query)
@@ -495,41 +507,6 @@
         </div>
       </div>
     </footer>
-
-    <script>
-      // Add accessibility enhancements through JavaScript
-      document.addEventListener('DOMContentLoaded', function() {
-        // Add aria-expanded attribute handler for details elements
-        const detailsElements = document.querySelectorAll('details');
-        detailsElements.forEach(function(details) {
-          const summary = details.querySelector('summary');
-          if (summary) {
-            // Set initial aria-expanded state
-            summary.setAttribute('aria-expanded', details.hasAttribute('open'));
-
-            // Update aria-expanded when details state changes
-            details.addEventListener('toggle', function() {
-              summary.setAttribute('aria-expanded', details.hasAttribute('open'));
-            });
-          }
-        });
-
-        // Make the clear button accessible
-        const clearButton = document.getElementById('clear-search');
-        const searchInput = document.getElementById('search-input');
-
-        if (clearButton && searchInput) {
-          // Show/hide clear button based on input content
-          searchInput.addEventListener('input', function() {
-            if (this.value) {
-              clearButton.classList.remove('hidden');
-            } else {
-              clearButton.classList.add('hidden');
-            }
-          });
-        }
-      });
-    </script>
   </body>
 </html>")
 
@@ -539,6 +516,28 @@
 
 (selmer/add-filter! :url-encode safe-url-encode)
 (selmer/add-filter! :get (fn [m k] (get m k)))
+
+(defn load-config-file [config-path]
+  (try
+    (log/info "Loading configuration from file:" config-path)
+    (let [config-data (edn/read-string (slurp config-path))]
+      (log/info "Configuration loaded successfully")
+      config-data)
+    (catch Exception e
+      (log/error "Failed to load configuration file:" config-path)
+      (log/error (.getMessage e))
+      nil)))
+
+(defn init-config [opts]
+  (reset! config
+          {:topics         (:topics opts)
+           :topics-sources (:topics-sources opts)
+           :title          (:title opts)
+           :tagline        (:tagline opts)
+           :footer         (:footer opts)
+           :log-level      (:log-level opts)
+           :base-path      (:base-path opts)
+           :port           (:port opts)}))
 
 (defn set-template! [template-path]
   (if-not template-path
@@ -591,21 +590,31 @@
       lang
       data))))
 
-(defn home-page [topics-data base-path search-query category lang-key title tagline footer source]
+(defn home-page [topics-data base-path search-query category lang-key]
   (let [template-data (prepare-template-data topics-data search-query category base-path)]
     (render-page
      "home"
      (assoc template-data :page-title (get-in ui-strings [lang-key :home-title]))
-     title tagline footer source base-path lang-key)))
+     (:title @config)
+     (:tagline @config)
+     (:footer @config)
+     (:topics-sources @config)
+     base-path
+     lang-key)))
 
-(defn error-page [error-type base-path lang-key title tagline footer source]
+(defn error-page [error-type base-path lang-key]
   (render-page
    "error"
    {:error-type error-type
     :page-title (if (= error-type :not-found)
                   (get-in ui-strings [lang-key :content-not-found-title])
                   (get-in ui-strings [lang-key :page-not-found-title]))}
-   title tagline footer source base-path lang-key))
+   (:title @config)
+   (:tagline @config)
+   (:footer @config)
+   (:topics-sources @config)
+   base-path
+   lang-key))
 
 (defn strip-base-path [uri base-path]
   (let [base-len (count base-path)]
@@ -628,9 +637,9 @@
                    (safe-url-decode (or v ""))])))
           (str/split query-string #"&"))))
 
-(defn create-app [topics-data settings]
+(defn create-app [topics-data]
   (fn [{:keys [request-method uri query-string headers]}]
-    (let [path            (strip-base-path uri (:base-path settings))
+    (let [path            (strip-base-path uri (:base-path @config))
           params          (parse-query-string query-string)
           search-query    (:q params)
           category        (:category params)
@@ -642,14 +651,10 @@
           ;; For HTMX requests, render the full page but extract just the content portion
           (let [full-page    (home-page
                               topics-data
-                              (:base-path settings)
+                              (:base-path @config)
                               search-query
                               category
-                              lang-key
-                              (:title settings)
-                              (:tagline settings)
-                              (:footer settings)
-                              (:source settings))
+                              lang-key)
                 htmx-content (extract-htmx-content full-page)]
             {:status  200
              :headers {"Content-Type" "text/html; charset=utf-8"}
@@ -659,14 +664,10 @@
            :headers {"Content-Type" "text/html; charset=utf-8"}
            :body    (home-page
                      topics-data
-                     (:base-path settings)
+                     (:base-path @config)
                      search-query
                      category
-                     lang-key
-                     (:title settings)
-                     (:tagline settings)
-                     (:footer settings)
-                     (:source settings))})
+                     lang-key)})
         [:get "/robots.txt"]
         {:status  200
          :headers {"Content-Type" "text/plain"}
@@ -676,12 +677,8 @@
          :headers {"Content-Type" "text/html; charset=utf-8"}
          :body    (error-page
                    :not-found
-                   (:base-path settings)
-                   lang-key
-                   (:title settings)
-                   (:tagline settings)
-                   (:footer settings)
-                   (:source settings))}))))
+                   (:base-path @config)
+                   lang-key)}))))
 
 (defn show-help []
   (println "Usage: topics [options]")
@@ -694,28 +691,40 @@
   (System/exit 0))
 
 (defn -main [& args]
-  (try ;; Parse command line arguments with simplified handling
+  (try
     (let [opts (cli/parse-opts args {:spec cli-options})]
       (when (:help opts) (show-help))
-      (log/merge-config! {:min-level (keyword (:log-level opts))})
-      ;; Initialize template
-      (set-template! (:template opts))
+      ;; Initialize config with CLI options
+      (init-config opts)
+      ;; Override with config file if provided
+      (when-let [config-path (:config opts)]
+        (when-let [file-config (load-config-file config-path)]
+          ;; Only log sanitized config (without template)
+          (log/debug "Merging config (sanitized):" (dissoc file-config :template))
+          (swap! config merge file-config)))
+      ;; Set log level from config
+      (log/merge-config! {:min-level (keyword (:log-level @config))})
+      ;; Set template (handled in set-template! function)
+      (set-template! (:template @config))
+      ;; Set default template if no template was set
+      (when (nil? (:template @config))
+        (swap! config assoc :template default-template))
       ;; Load Topics data with format option
-      (let [topics-data (load-topics-data (:topics opts) (:format opts))]
+      (let [topics-data (load-topics-data (:topics @config) (:format opts))]
         (if (nil? topics-data)
-          (System/exit 1)
-          (do
-            ;; Start the server
-            (log/info (str "Starting server at http://localhost:" (:port opts)))
-            (if (empty? (:base-path opts))
+          (do (log/error "No topics provided")
+              (System/exit 1))
+          (do ;; Start the server
+            (log/info (str "Starting server at http://localhost:" (:port @config)))
+            (if (empty? (:base-path @config))
               (log/info "Running at root path /")
-              (log/info "Running at base path:" (:base-path opts)))
-            (log/info "Site title:" (:title opts))
-            (log/info "Site tagline:" (:tagline opts))
-            (log/info "Topics source:" (:topics-sources opts))
+              (log/info "Running at base path:" (:base-path @config)))
+            (log/info "Site title:" (:title @config))
+            (log/info "Site tagline:" (:tagline @config))
+            (log/info "Topics source:" (:topics-sources @config))
             (server/run-server
-             (create-app topics-data (assoc opts :source (:topics-sources opts)))
-             {:port (:port opts)})
+             (create-app topics-data)
+             {:port (:port @config)})
             (log/info "Server started. Press Ctrl+C to stop.")
             @(promise)))))
     (catch Exception e
