@@ -91,12 +91,9 @@
   (try
     (log/info "Loading Topics data from" source)
     (let [content (slurp source)
-          format  (if format-option
-                    (detect-format source format-option)
-                    :json) ; Default to JSON if no format specified
+          format  (detect-format source format-option)
           _       (log/info "Using format:" (name format))
           data    (case format
-                    :json (json/parse-string content true)
                     :edn  (edn/read-string content)
                     :yaml (yaml/parse-string content)
                     (do (log/warn "Unknown format" format "defaulting to JSON")
@@ -113,14 +110,24 @@
       :en)))
 
 (defn with-base-path [path base-path]
-  (str (str/replace base-path #"/$" "") path))
+  (if (empty? base-path)
+    path
+    (str (str/replace base-path #"/$" "") path)))
 
 (defn safe-url-encode [s]
   (when (not-empty s)
     (-> s
         (java.net.URLEncoder/encode "UTF-8")
-        (str/replace "+" "%20")  ;; Replace + with %20 for spaces
-        (str/replace "%28" "(")  ;; Keep common characters readable
+        (str/replace
+         #"(\+|%28|%29|%2C)"
+         #(case (first %) \+ "%20" \% (case (subs % 1) "28" "(" "29" ")" "2C" "," %))))))
+
+(defn safe-url-encode [s]
+  (when (not-empty s)
+    (-> s
+        (java.net.URLEncoder/encode "UTF-8")
+        (str/replace "+" "%20") ;; Replace + with %20 for spaces
+        (str/replace "%28" "(") ;; Keep common characters readable
         (str/replace "%29" ")")
         (str/replace "%2C" ","))))
 
@@ -135,12 +142,9 @@
   (when (not-empty html)
     (-> html
         (str/replace #"<[^>]*>" "")
-        (str/replace #"&nbsp;" " ")
-        (str/replace #"&lt;" "<")
-        (str/replace #"&gt;" ">")
-        (str/replace #"&amp;" "&")
-        (str/replace #"&quot;" "\"")
-        (str/replace #"&apos;" "'"))))
+        (str/replace
+         #"&(nbsp|lt|gt|amp|quot|apos);"
+         #(case (second %) "nbsp" " " "lt"   "<" "gt"   ">" "amp"  "&" "quot" "\"" "apos" "'")))))
 
 (defn sanitize-search-query [query]
   (when (not-empty query)
@@ -152,22 +156,17 @@
 (defn normalize-text [text]
   (when (not-empty text)
     (-> text
-        (str/lower-case)
-        ;; Replace diacritical marks
+        str/lower-case
         (str/replace #"[àáâãäå]" "a")
         (str/replace #"[èéêë]" "e")
         (str/replace #"[ìíîï]" "i")
         (str/replace #"[òóôõö]" "o")
         (str/replace #"[ùúûü]" "u")
         (str/replace #"[ýÿ]" "y")
-        (str/replace #"[çñ]" #(if (= % "ç") "c" "n"))
-        (str/replace #"œ" "oe")
-        (str/replace #"æ" "ae")
-        ;; Remove punctuation and special characters
+        (str/replace #"[çñœæ]" #(case % "ç" "c" "ñ" "n" "œ" "oe" "æ" "ae"))
         (str/replace #"[.,;:!?'\"/\\(\\)\\[\\]{}]+" " ")
-        ;; Collapse multiple spaces
         (str/replace #"\s+" " ")
-        (str/trim))))
+        str/trim)))
 
 (defn search-topics [query topics-data]
   (when (not-empty query)
@@ -183,8 +182,10 @@
         categories (distinct (map last paths))]
     (sort categories)))
 
-(defn get-topics-by-category [category topics-data]
-  (filter #(= (last (:path %)) category) topics-data))
+(def get-topics-by-category
+  (memoize
+   (fn [category topics-data]
+     (filter #(= (last (:path %)) category) topics-data))))
 
 (def config (atom {}))
 
@@ -347,17 +348,12 @@
       .clear-button:hover, .clear-button:focus {
         background-color: var(--color-background-alt);
       }
-      .clear-button.hidden {
-        display: none;
-      }
 
-      /* Added for HTMX search */
       .search-results {margin-top: 1rem;}
       .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
       .htmx-request .htmx-indicator {opacity: 1;}
       .htmx-request.htmx-indicator {opacity: 1;}
 
-      /* Make sure links are distinguishable by more than just color */
       a:not(.category-card > a):not(.clear-button) {
         text-decoration: underline;
       }
@@ -575,9 +571,9 @@
   (let [start-idx (str/index-of rendered-template htmx-content-start-marker)
         end-idx   (str/index-of rendered-template htmx-content-end-marker)]
     (when (and start-idx end-idx (< start-idx end-idx))
-      (let [content-start (+ start-idx (count htmx-content-start-marker))
-            content-end   end-idx]
-        (str/trim (subs rendered-template content-start content-end))))))
+      (-> rendered-template
+          (subs (+ start-idx (count htmx-content-start-marker)) end-idx)
+          str/trim))))
 
 (defn render-page [content-type data title tagline footer source base-path lang-key]
   (let [lang (get ui-strings lang-key)]
@@ -624,11 +620,13 @@
 (defn parse-query-string [query-string]
   (when (not-empty query-string)
     (into {}
-      (for [pair (str/split query-string #"&")
-            :let [[k v] (str/split pair #"=" 2)] ; Limit to 2 parts
-            :when (and k (not-empty k))]
-        [(keyword (safe-url-decode k))
-         (safe-url-decode (or v ""))]))))
+          (comp
+           (map #(str/split % #"=" 2))
+           (filter #(and (first %) (not-empty (first %))))
+           (map (fn [[k v]]
+                  [(keyword (safe-url-decode k))
+                   (safe-url-decode (or v ""))])))
+          (str/split query-string #"&"))))
 
 (defn create-app [topics-data settings]
   (fn [{:keys [request-method uri query-string headers]}]
