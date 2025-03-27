@@ -623,14 +623,12 @@
 
 (defn parse-query-string [query-string]
   (when (not-empty query-string)
-    (try
-      (into {}
-            (for [pair (str/split query-string #"&")]
-              (let [[k v] (str/split pair #"=" 2)]  ;; Limit to 2 parts
-                [(keyword (safe-url-decode k))
-                 (safe-url-decode (or v ""))])))  ;; Handle missing values
-      (catch Exception e
-        (log/error "Error parsing query string:" (.getMessage e))))))
+    (into {}
+      (for [pair (str/split query-string #"&")
+            :let [[k v] (str/split pair #"=" 2)] ; Limit to 2 parts
+            :when (and k (not-empty k))]
+        [(keyword (safe-url-decode k))
+         (safe-url-decode (or v ""))]))))
 
 (defn create-app [topics-data settings]
   (fn [{:keys [request-method uri query-string headers]}]
