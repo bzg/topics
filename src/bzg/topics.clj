@@ -164,7 +164,6 @@
 (defn get-topics-by-category [category topics-data]
   (filter #(= (last (:path %)) category) topics-data))
 
-;; Define the layout template
 (def layout-template
   "<!DOCTYPE html>
 <html lang=\"{{lang}}\" data-theme=\"light\">
@@ -264,125 +263,68 @@
     </div>
   </div>")))
 
+(defn render-alert [message]
+  (str "<div class=\"alert alert-info\">
+        <p>" message "</p>
+        </div>"))
+
+(defn render-topics-details [topics]
+  (str "<div>"
+       (str/join "\n"
+                 (for [item topics]
+                   (str "<details>
+                          <summary>" (:title item) "</summary>
+                          <div>" (:content item) "</div>
+                        </details>")))
+       "</div>"))
+
+(defn render-categories-grid [topics-data base-path lang-key]
+  (let [lang (get ui-strings lang-key)]
+    (str "<div class=\"grid\">"
+         (str/join "\n"
+                   (for [category (get-categories topics-data)]
+                     (str "<div class=\"category-card\">
+                            <a href=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
+                               hx-get=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
+                               hx-push-url=\"true\"
+                               hx-target=\"#topics-content\">
+                            <h3>" category "</h3>
+                            <p>" (count (get-topics-by-category category topics-data)) (:topics-count lang) "</p>
+                            </a>
+                          </div>")))
+         "</div>")))
+
+(defn render-filtered-content [filtered-topics type lang-key]
+  (let [lang               (get ui-strings lang-key)
+        no-results-message (if (= type :search)
+                             (:no-search-results lang)
+                             (:no-category-results lang))]
+    (if (empty? filtered-topics)
+      (render-alert no-results-message)
+      (render-topics-details filtered-topics))))
+
+(defn filter-topics [topics-data search-query category]
+  (cond
+    (not-empty search-query) (search-topics search-query topics-data)
+    (not-empty category)     (get-topics-by-category category topics-data)
+    :else                    nil))
+
+(defn render-content [topics-data base-path search-query category lang-key]
+  (let [filtered-topics (filter-topics topics-data search-query category)]
+    (if (or (not-empty search-query) (not-empty category))
+      (render-filtered-content filtered-topics
+                               (if (not-empty search-query) :search :category)
+                               lang-key)
+      (render-categories-grid topics-data base-path lang-key))))
+
 (defn home-content [topics-data base-path search-query category lang-key]
-  (let [lang            (get ui-strings lang-key)
-        filtered-topics (cond
-                          ;; Filter by search query if provided
-                          (not-empty search-query)
-                          (search-topics search-query topics-data)
-                          ;; Filter by category if provided
-                          (not-empty category)
-                          (get-topics-by-category category topics-data)
-                          ;; Otherwise show all categories
-                          :else
-                          nil)]
-    (str
-     ;; Search form always visible
-     (search-form-component base-path search-query lang-key)
-     ;; Dynamic content based on search/category state
-     "<div id=\"topics-content\">"
-     (if (or (not-empty search-query) (not-empty category))
-       ;; Show search/category results
-       (cond
-         ;; Search results
-         (not-empty search-query)
-         (if (empty? filtered-topics)
-           (str "<div class=\"alert alert-info\">
-                <p>" (:no-search-results lang) "</p>
-                </div>")
-           (str "<div>"
-                (str/join "\n"
-                          (for [item filtered-topics]
-                            (str "<details>
-                                      <summary>" (:title item) "</summary>
-                                      <div>" (:content item) "</div>
-                                      </details>")))
-                "</div>"))
-         ;; Category results
-         (not-empty category)
-         (if (empty? filtered-topics)
-           (str "<div class=\"alert alert-info\">
-                <p>" (:no-category-results lang) "</p>
-                </div>")
-           (str "<div>"
-                (str/join "\n"
-                          (for [item filtered-topics]
-                            (str "<details>
-                                      <summary>" (:title item) "</summary>
-                                      <div>" (:content item) "</div>
-                                      </details>")))
-                "</div>"))
-         :else "")
-       ;; Show categories grid (default home view)
-       (str "<div class=\"grid\">"
-            (str/join "\n"
-                      (for [category (get-categories topics-data)]
-                        (str "<div class=\"category-card\">
-                             <a href=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
-                                hx-get=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
-                                hx-push-url=\"true\"
-                                hx-target=\"#topics-content\">
-                             <h3>" category "</h3>
-                             <p>" (count (get-topics-by-category category topics-data)) (:topics-count lang) "</p>
-                             </a>
-                             </div>")))
-            "</div>"))
-     "</div>")))
+  (str (search-form-component base-path search-query lang-key)
+       "<div id=\"topics-content\">"
+       (render-content topics-data base-path search-query category lang-key)
+       "</div>"))
 
 (defn topics-content-fragment [topics-data base-path search-query category lang-key]
-  (let [lang            (get ui-strings lang-key)
-        filtered-topics (cond (not-empty search-query)
-                              (search-topics search-query topics-data)
-                              (not-empty category)
-                              (get-topics-by-category category topics-data)
-                              :else nil)]
-    (if (or (not-empty search-query) (not-empty category))
-      ;; Show search/category results
-      (cond
-        ;; Search results
-        (not-empty search-query)
-        (if (empty? filtered-topics)
-          (str "<div class=\"alert alert-info\">
-             <p>" (:no-search-results lang) "</p>
-           </div>")
-          (str "<div>"
-               (str/join "\n"
-                         (for [item filtered-topics]
-                           (str "<details>
-                                     <summary>" (:title item) "</summary>
-                                     <div>" (:content item) "</div>
-                                     </details>")))
-               "</div>"))
-        ;; Category results
-        (not-empty category)
-        (if (empty? filtered-topics)
-          (str "<div class=\"alert alert-info\">
-                <p>" (:no-category-results lang) "</p>
-                </div>")
-          (str "<div>"
-               (str/join "\n"
-                         (for [item filtered-topics]
-                           (str "<details>
-                                     <summary>" (:title item) "</summary>
-                                     <div>" (:content item) "</div>
-                                     </details>")))
-               "</div>"))
-        :else "")
-      ;; Show categories grid (default home view)
-      (str "<div class=\"grid\">"
-           (str/join
-            "\n"
-            (for [category (get-categories topics-data)]
-              (str "<div class=\"category-card\">
-                      <a href=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
-                         hx-get=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
-                         hx-push-url=\"true\"
-                         hx-target=\"#topics-content\">
-                      <h3>" category "</h3>
-                       <p>" (count (get-topics-by-category category topics-data)) (:topics-count lang) "</p>
-                       </a>
-                       </div>")))
-           "</div>"))))
+  (render-content topics-data base-path search-query category lang-key))
 
 (defn error-content [base-path type lang-key]
   (let [lang    (get ui-strings lang-key)
@@ -493,7 +435,6 @@
         @(promise)))
     (catch Exception e
       (log/error "ERROR:" (.getMessage e))
-      (.printStackTrace e)
       (System/exit 1))))
 
 (when (= *file* (System/getProperty "babashka.file"))
