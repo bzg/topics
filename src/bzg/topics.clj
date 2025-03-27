@@ -39,7 +39,7 @@
    :log-level      {:alias :l :desc "Set log level: debug, info (the default), warn or error" :ref "<string>" :default "info" :coerce :string}
    :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
    :port           {:alias :p :desc "Port number for server (default 8080)" :ref "<int>" :default 8080 :coerce :int}
-   :index-tpl      {:alias :I :desc "Path to index HTML template file" :ref "<file>" :coerce :string}
+   :template       {:alias :I :desc "Path to custom HTML template file" :ref "<file>" :coerce :string}
    :help           {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
@@ -167,9 +167,9 @@
 
 (def config (atom {}))
 
-(def index-default-tpl
+(def default-template
   "<!DOCTYPE html>
-  <html lang=\"{{lang}}\" data-theme=\"light\">
+<html lang=\"{{lang}}\" data-theme=\"light\">
   <head>
     <meta charset=\"utf-8\">
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
@@ -209,156 +209,247 @@
   <body>
     <header class=\"site-header\">
       <div class=\"container\">
-	<div>
-	  <h1><a href=\"{{home-link}}\">{{title}}</a></h1>
-	  <p>{{tagline}}</p>
-	</div>
+        <div>
+          <h1><a href=\"{{home-link}}\">{{title}}</a></h1>
+          <p>{{tagline}}</p>
+        </div>
       </div>
     </header>
     <main class=\"container\">
-      {{content|safe}}
+      {% ifequal content-type \"home\" %}
+      <!-- Search component -->
+      <div class=\"search-container\">
+        <input placeholder=\"{{search-placeholder}}\"
+               type=\"search\"
+               id=\"search-input\"
+               name=\"q\"
+               value=\"{{search-query|safe}}\"
+               hx-get=\"{{home-link}}\"
+               hx-push-url=\"true\"
+               hx-trigger=\"keyup changed delay:300ms, search\"
+               hx-target=\"#topics-content\"
+               hx-indicator=\".htmx-indicator\">
+        <button type=\"button\"
+                class=\"clear-button{% if search-query|empty? %} hidden{% endif %}\"
+                title=\"{{clear-search}}\"
+                aria-label=\"{{clear-search}}\"
+                hx-get=\"{{home-link}}\"
+                hx-push-url=\"true\"
+                hx-target=\"#topics-content\"
+                onclick=\"document.getElementById('search-input').value=''\">X</button>
+        <div class=\"htmx-indicator\">
+          <small>{{searching}}</small>
+        </div>
+      </div>
+
+      <div id=\"topics-content\">
+	{% if search-query|not-empty %}
+	<!-- Search results -->
+	{% if topics|empty? %}
+	<div class=\"alert alert-info\">
+          <p>{{no-search-results}}</p>
+	</div>
+	{% else %}
+	<div>
+          {% for topic in topics %}
+          <details>
+            <summary>{{topic.title}}</summary>
+            <div>{{topic.content|safe}}</div>
+          </details>
+          {% endfor %}
+	</div>
+	{% endif %}
+	{% else %}
+	{% if category|not-empty %}
+	<!-- Category results -->
+	{% if topics|empty? %}
+        <div class=\"alert alert-info\">
+          <p>{{no-category-results}}</p>
+        </div>
+	{% else %}
+        <div>
+          {% for topic in topics %}
+          <details>
+            <summary>{{topic.title}}</summary>
+            <div>{{topic.content|safe}}</div>
+          </details>
+          {% endfor %}
+        </div>
+	{% endif %}
+	{% else %}
+	<!-- Categories grid -->
+	<div class=\"grid\">
+          {% for category in categories %}
+          <div class=\"category-card\">
+            <a href=\"{{home-link}}?category={{category|url-encode}}\"
+               hx-get=\"{{home-link}}?category={{category|url-encode}}\"
+               hx-push-url=\"true\"
+               hx-target=\"#topics-content\">
+              <h3>{{category}}</h3>
+              <p>{{category-counts|get:category}} {{topics-count}}</p>
+            </a>
+          </div>
+          {% endfor %}
+	</div>
+	{% endif %}
+	{% endif %}
+      </div>
+      {% endifequal %}
+
+      {% ifequal content-type \"error\" %}
+      <!-- Error pages -->
+      <div class=\"search-container\">
+        <input placeholder=\"{{search-placeholder}}\"
+               type=\"search\"
+               id=\"search-input\"
+               name=\"q\"
+               value=\"\"
+               hx-get=\"{{home-link}}\"
+               hx-push-url=\"true\"
+               hx-trigger=\"keyup changed delay:300ms, search\"
+               hx-target=\"#topics-content\"
+               hx-indicator=\".htmx-indicator\">
+        <div class=\"htmx-indicator\">
+          <small>{{searching}}</small>
+        </div>
+      </div>
+      <div id=\"topics-content\">
+        <h2>{% ifequal error-type \"not-found\" %}{{content-not-found-title}}{% else %}{{page-not-found-title}}{% endifequal %}</h2>
+        <div class=\"alert alert-error\">
+          <h3>{% ifequal error-type \"not-found\" %}{{article-not-found}}{% else %}{{page-not-found}}{% endifequal %}</h3>
+          <p>{% ifequal error-type \"not-found\" %}{{check-url-search}}{% else %}{{check-url-home}}{% endifequal %}</p>
+        </div>
+      </div>
+      {% endifequal %}
     </main>
     <footer>
       <div class=\"container\">
-	<div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">{{content-source}}</a> · {{footer|safe}}</p>
-	</div>
+        <div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">{{content-source}}</a> · {{footer|safe}}</p>
+        </div>
+      </div>
     </footer>
   </body>
-  </html>")
+</html>")
 
-(defn set-index-template! [index-tpl]
-  ;; Load index template from file if provided
-  (if-not index-tpl
-    (swap! config assoc :index-template index-default-tpl)
+(def partial-template
+  "{% if search-query|not-empty %}
+<!-- Search results -->
+{% if topics|empty? %}
+<div class=\"alert alert-info\">
+  <p>{{no-search-results}}</p>
+</div>
+{% else %}
+<div>
+  {% for topic in topics %}
+  <details>
+    <summary>{{topic.title}}</summary>
+    <div>{{topic.content|safe}}</div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+{% else %}
+{% if category|not-empty %}
+<!-- Category results -->
+{% if topics|empty? %}
+<div class=\"alert alert-info\">
+  <p>{{no-category-results}}</p>
+</div>
+{% else %}
+<div>
+  {% for topic in topics %}
+  <details>
+    <summary>{{topic.title}}</summary>
+    <div>{{topic.content|safe}}</div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+{% else %}
+<!-- Categories grid -->
+<div class=\"grid\">
+  {% for category in categories %}
+  <div class=\"category-card\">
+    <a href=\"{{home-link}}?category={{category|url-encode}}\"
+       hx-get=\"{{home-link}}?category={{category|url-encode}}\"
+       hx-push-url=\"true\"
+       hx-target=\"#topics-content\">
+      <h3>{{category}}</h3>
+      <p>{{category-counts|get:category}} {{topics-count}}</p>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}")
+
+(selmer/add-filter! :url-encode safe-url-encode)
+(selmer/add-filter! :get (fn [m k] (get m k)))
+
+(defn set-template! [template-path]
+  (if-not template-path
+    (swap! config assoc :template default-template)
     (try
-      (log/info "Loading index template from file:" index-tpl)
-      (swap! config assoc :index-template (slurp index-tpl))
+      (log/info "Loading template from file:" template-path)
+      (swap! config assoc :template (slurp template-path))
       (catch Exception e
-        (log/error "Failed to load index template file:" index-tpl)
-        (log/error (.getMessage e))))))
+        (log/error "Failed to load template file:" template-path)
+        (log/error (.getMessage e))
+        (swap! config assoc :template default-template)))))
 
-(defn page-layout [page-title content title tagline footer source base-path lang-key]
+;; Common function to prepare data for templates
+(defn prepare-template-data [topics-data search-query category base-path]
+  (let [filtered-topics (cond
+                          (not-empty search-query) (search-topics search-query topics-data)
+                          (not-empty category)     (get-topics-by-category category topics-data)
+                          :else                    nil)
+        categories (get-categories topics-data)
+        category-counts (into {} (map (fn [c] [c (count (get-topics-by-category c topics-data))]) categories))]
+    {:search-query search-query
+     :category category
+     :topics filtered-topics
+     :categories categories
+     :category-counts category-counts
+     :home-link (with-base-path "/" base-path)}))
+
+(defn render-page [content-type data title tagline footer source base-path lang-key]
   (let [lang (get ui-strings lang-key)]
     (selmer/render
-     (:index-template @config)
-     {:page-title     page-title
-      :content        content
-      :title          title
-      :tagline        tagline
-      :footer         footer
-      :source         source
-      :home-link      (with-base-path "/" base-path)
-      :lang           (:lang lang)
-      :content-source (:content-source lang)})))
+     (:template @config)
+     (merge
+      ;; Base template data
+      {:content-type content-type
+       :title title
+       :tagline tagline
+       :footer footer
+       :source source
+       :home-link (with-base-path "/" base-path)
+       :page-title (get data :page-title (:home-title lang))}
+      lang
+      data))))
 
-(defn search-form-component [base-path search-query lang-key]
-  (let [lang (get ui-strings lang-key)]
-    (str "<div class=\"search-container\">
-    <input placeholder=\"" (:search-placeholder lang) "\"
-           type=\"search\"
-           id=\"search-input\"
-           name=\"q\"
-           value=\"" (or search-query "") "\"
-           hx-get=\"" (with-base-path "/" base-path) "\"
-           hx-push-url=\"true\"
-           hx-trigger=\"keyup changed delay:300ms, search\"
-           hx-target=\"#topics-content\"
-           hx-indicator=\".htmx-indicator\">
-    <button type=\"button\"
-            class=\"clear-button" (if (empty? search-query) " hidden" "") "\"
-            title=\"" (:clear-search lang) "\"
-            aria-label=\"" (:clear-search lang) "\"
-            hx-get=\"" (with-base-path "/" base-path) "\"
-            hx-push-url=\"true\"
-            hx-target=\"#topics-content\"
-            onclick=\"document.getElementById('search-input').value=''\">X</button>
-    <div class=\"htmx-indicator\">
-      <small>" (:searching lang) "</small>
-    </div>
-  </div>")))
+(defn render-partial-content [topics-data search-query category base-path lang-key]
+  (let [template-data (prepare-template-data topics-data search-query category base-path)
+        lang (get ui-strings lang-key)]
+    (selmer/render
+     partial-template
+     (merge lang template-data))))
 
-(defn render-alert [message]
-  (str "<div class=\"alert alert-info\">
-        <p>" message "</p>
-        </div>"))
+(defn home-page [topics-data base-path search-query category lang-key title tagline footer source]
+  (let [template-data (prepare-template-data topics-data search-query category base-path)]
+    (render-page
+     "home"
+     (assoc template-data :page-title (get-in ui-strings [lang-key :home-title]))
+     title tagline footer source base-path lang-key)))
 
-(defn render-topics-details [topics]
-  (str "<div>"
-       (str/join "\n"
-                 (for [item topics]
-                   (str "<details>
-                          <summary>" (:title item) "</summary>
-                          <div>" (:content item) "</div>
-                        </details>")))
-       "</div>"))
-
-(defn render-categories-grid [topics-data base-path lang-key]
-  (let [lang (get ui-strings lang-key)]
-    (str "<div class=\"grid\">"
-         (str/join "\n"
-                   (for [category (get-categories topics-data)]
-                     (str "<div class=\"category-card\">
-                            <a href=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
-                               hx-get=\"" (with-base-path "/" base-path) "?category=" (safe-url-encode category) "\"
-                               hx-push-url=\"true\"
-                               hx-target=\"#topics-content\">
-                            <h3>" category "</h3>
-                            <p>" (count (get-topics-by-category category topics-data)) (:topics-count lang) "</p>
-                            </a>
-                          </div>")))
-         "</div>")))
-
-(defn render-filtered-content [filtered-topics type lang-key]
-  (let [lang               (get ui-strings lang-key)
-        no-results-message (if (= type :search)
-                             (:no-search-results lang)
-                             (:no-category-results lang))]
-    (if (empty? filtered-topics)
-      (render-alert no-results-message)
-      (render-topics-details filtered-topics))))
-
-(defn filter-topics [topics-data search-query category]
-  (cond
-    (not-empty search-query) (search-topics search-query topics-data)
-    (not-empty category)     (get-topics-by-category category topics-data)
-    :else                    nil))
-
-(defn render-content [topics-data base-path search-query category lang-key]
-  (let [filtered-topics (filter-topics topics-data search-query category)]
-    (if (or (not-empty search-query) (not-empty category))
-      (render-filtered-content filtered-topics
-                               (if (not-empty search-query) :search :category)
-                               lang-key)
-      (render-categories-grid topics-data base-path lang-key))))
-
-(defn home-content [topics-data base-path search-query category lang-key]
-  (str (search-form-component base-path search-query lang-key)
-       "<div id=\"topics-content\">"
-       (render-content topics-data base-path search-query category lang-key)
-       "</div>"))
-
-(defn topics-content-fragment [topics-data base-path search-query category lang-key]
-  (render-content topics-data base-path search-query category lang-key))
-
-(defn error-content [base-path type lang-key]
-  (let [lang    (get ui-strings lang-key)
-        title   (if (= type :not-found)
-                  (:content-not-found-title lang)
-                  (:page-not-found-title lang))
-        message (if (= type :not-found)
-                  (:article-not-found lang)
-                  (:page-not-found lang))
-        action  (if (= type :not-found)
-                  (:check-url-search lang)
-                  (:check-url-home lang))]
-    (str (search-form-component base-path nil lang-key)
-         "<div id=\"topics-content\">
-          <h2>" title "</h2>
-          <div class=\"alert alert-error\">
-          <h3>" message "</h3>
-          <p>" action "</p>
-          </div>
-          </div>")))
+(defn error-page [error-type base-path lang-key title tagline footer source]
+  (render-page
+   "error"
+   {:error-type error-type
+    :page-title (if (= error-type :not-found)
+                  (get-in ui-strings [lang-key :content-not-found-title])
+                  (get-in ui-strings [lang-key :page-not-found-title]))}
+   title tagline footer source base-path lang-key))
 
 (defn strip-base-path [uri base-path]
   (let [base-len (count base-path)]
@@ -375,23 +466,12 @@
     (try
       (into {}
             (for [pair (str/split query-string #"&")]
-              (let [[k v] (str/split pair #"=" 2)] ;; Limit to 2 parts
+              (let [[k v] (str/split pair #"=" 2)]  ;; Limit to 2 parts
                 [(keyword (safe-url-decode k))
                  (safe-url-decode (or v ""))])))  ;; Handle missing values
       (catch Exception e
-        (log/error "Error parsing query string:" (.getMessage e))))))
-
-(defn html-response [status title content settings]
-  {:status  status
-   :headers {"Content-Type" "text/html; charset=utf-8"}
-   :body    (page-layout
-             title content (:title settings) (:tagline settings)
-             (:footer settings) (:source settings) (:base-path settings) (:lang-key settings))})
-
-(defn fragment-response [content]
-  {:status  200
-   :headers {"Content-Type" "text/html; charset=utf-8"}
-   :body    content})
+        (log/error "Error parsing query string:" (.getMessage e))
+        {}))))
 
 (defn create-app [topics-data settings]
   (fn [{:keys [request-method uri query-string headers]}]
@@ -404,27 +484,51 @@
       (case [request-method path]
         [:get "/"]
         (if is-htmx-request
-          ;; Return just the fragment for HTMX requests
-          (fragment-response
-           (topics-content-fragment topics-data (:base-path settings) search-query category lang-key))
+          ;; Return only the content portion for htmx requests
+          {:status  200
+           :headers {"Content-Type" "text/html; charset=utf-8"}
+           :body    (render-partial-content
+                     topics-data
+                     search-query
+                     category
+                     (:base-path settings)
+                     lang-key)}
           ;; Return full page for direct browser requests
-          (html-response 200 (get-in ui-strings [lang-key :home-title])
-                         (home-content topics-data (:base-path settings) search-query category lang-key)
-                         (assoc settings :lang-key lang-key)))
+          {:status  200
+           :headers {"Content-Type" "text/html; charset=utf-8"}
+           :body    (home-page
+                     topics-data
+                     (:base-path settings)
+                     search-query
+                     category
+                     lang-key
+                     (:title settings)
+                     (:tagline settings)
+                     (:footer settings)
+                     (:source settings))})
         [:get "/robots.txt"]
         {:status  200
          :headers {"Content-Type" "text/plain"}
          :body    "User-agent: *\nAllow: /\n"}
-        (html-response 404
-                       (get-in ui-strings [lang-key :page-not-found-title])
-                       (error-content (:base-path settings) :page-not-found lang-key)
-                       (assoc settings :lang-key lang-key))))))
+        ;; Default - return 404
+        {:status 404
+         :headers {"Content-Type" "text/html; charset=utf-8"}
+         :body (error-page
+                :not-found
+                (:base-path settings)
+                lang-key
+                (:title settings)
+                (:tagline settings)
+                (:footer settings)
+                (:source settings))}))))
 
 (defn show-help []
   (println "Usage: topics [options]")
   (println "\nOptions:")
   (println (cli/format-opts
-            {:spec (into (sorted-map) (map (fn [[k v]] [k (dissoc v :default)]) cli-options))}))
+            {:spec (->> cli-options
+                        (map (fn [[k v]] [k (dissoc v :default)]))
+                        (into (sorted-map)))}))
   (System/exit 0))
 
 (defn -main [& args]
@@ -432,7 +536,8 @@
     (let [opts (cli/parse-opts args {:spec cli-options})]
       (when (:help opts) (show-help))
       (log/merge-config! {:min-level (keyword (:log-level opts))})
-      (set-index-template! (:index-tpl opts))
+      ;; Initialize template
+      (set-template! (:template opts))
       ;; Load Topics data
       (let [topics-data (load-topics-data (:topics opts))]
         ;; Start the server
