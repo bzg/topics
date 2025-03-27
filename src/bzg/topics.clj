@@ -39,6 +39,7 @@
    :log-level      {:alias :l :desc "Set log level: debug, info (the default), warn or error" :ref "<string>" :default "info" :coerce :string}
    :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
    :port           {:alias :p :desc "Port number for server (default 8080)" :ref "<int>" :default 8080 :coerce :int}
+   :index-tpl      {:alias :I :desc "Path to index HTML template file" :ref "<file>" :coerce :string}
    :help           {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
@@ -164,69 +165,82 @@
 (defn get-topics-by-category [category topics-data]
   (filter #(= (last (:path %)) category) topics-data))
 
-(def layout-template
+(def config (atom {}))
+
+(def index-default-tpl
   "<!DOCTYPE html>
-<html lang=\"{{lang}}\" data-theme=\"light\">
-<head>
-  <meta charset=\"utf-8\">
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-  <title>{{page-title}} - {{title}}</title>
-  <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
-  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
-  <script src=\"https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js\"></script>
-  <style>
-  /* Custom styles */
-  .container {max-width: 1200px; margin: 0 auto; padding: 0 1rem;}
-  header.site-header {padding: 1rem 0; background-color: #f8f9fa; margin-bottom: 2rem;}
-  footer {margin-top: 3rem; padding: 2rem 0; background-color: #f8f9fa;}
-  .category-card {height: 100%; display: flex; flex-direction: column;}
-  .category-card > a {flex-grow: 1; display: flex; flex-direction: column; padding: 1.5rem; text-decoration: none; color: inherit; border: 1px solid #dee2e6; border-radius: 0.5rem; background-color: white; transition: transform 0.2s, box-shadow 0.2s;}
-  .category-card > a:hover {transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);}
-  .grid {display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem;}
-  details {margin-bottom: 1rem; border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem;}
-  details summary {cursor: pointer; font-weight: bold; padding: 0.5rem 0;}
-  details[open] summary {margin-bottom: 1rem;}
-  .back-link {display: inline-flex; align-items: center; margin-bottom: 1rem;}
-  .back-link::before {content: '←'; margin-right: 0.5rem;}
-  .search-form {margin-bottom: 3rem;}
-  .search-container {display: flex; gap: 0.5rem; margin-bottom: 2rem;}
-  .search-container input[type=\"search\"] {flex-grow: 1;}
-  .alert {padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;}
-  .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
-  .alert-error {background-color: #ffe3e3; border: 1px solid #ffa8a8; color: #e03131;}
-  .footer {text-align: center;font-size: .8rem;}
-  .clear-button {border: 1px solid; border-radius: 1rem;}
-  /* Added for HTMX search */
-  .search-results {margin-top: 1rem;}
-  .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
-  .htmx-request .htmx-indicator {opacity: 1;}
-  .htmx-request.htmx-indicator {opacity: 1;}
-  </style>
+  <html lang=\"{{lang}}\" data-theme=\"light\">
+  <head>
+    <meta charset=\"utf-8\">
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+    <title>{{page-title}} - {{title}}</title>
+    <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
+    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
+    <script src=\"https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js\"></script>
+    <style>
+      /* Custom styles */
+      .container {max-width: 1200px; margin: 0 auto; padding: 0 1rem;}
+      header.site-header {padding: 1rem 0; background-color: #f8f9fa; margin-bottom: 2rem;}
+      footer {margin-top: 3rem; padding: 2rem 0; background-color: #f8f9fa;}
+      .category-card {height: 100%; display: flex; flex-direction: column;}
+      .category-card > a {flex-grow: 1; display: flex; flex-direction: column; padding: 1.5rem; text-decoration: none; color: inherit; border: 1px solid #dee2e6; border-radius: 0.5rem; background-color: white; transition: transform 0.2s, box-shadow 0.2s;}
+      .category-card > a:hover {transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);}
+      .grid {display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2rem;}
+      details {margin-bottom: 1rem; border: 1px solid #dee2e6; border-radius: 0.5rem; padding: 1rem;}
+      details summary {cursor: pointer; font-weight: bold; padding: 0.5rem 0;}
+      details[open] summary {margin-bottom: 1rem;}
+      .back-link {display: inline-flex; align-items: center; margin-bottom: 1rem;}
+      .back-link::before {content: '←'; margin-right: 0.5rem;}
+      .search-form {margin-bottom: 3rem;}
+      .search-container {display: flex; gap: 0.5rem; margin-bottom: 2rem;}
+      .search-container input[type=\"search\"] {flex-grow: 1;}
+      .alert {padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;}
+      .alert-info {background-color: #e7f5ff; border: 1px solid #a5d8ff; color: #1971c2;}
+      .alert-error {background-color: #ffe3e3; border: 1px solid #ffa8a8; color: #e03131;}
+      .footer {text-align: center;font-size: .8rem;}
+      .clear-button {border: 1px solid; border-radius: 1rem;}
+      /* Added for HTMX search */
+      .search-results {margin-top: 1rem;}
+      .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
+      .htmx-request .htmx-indicator {opacity: 1;}
+      .htmx-request.htmx-indicator {opacity: 1;}
+    </style>
   </head>
   <body>
-  <header class=\"site-header\">
-  <div class=\"container\">
-  <div>
-  <h1><a href=\"{{home-link}}\">{{title}}</a></h1>
-  <p>{{tagline}}</p>
-  </div>
-  </div>
-  </header>
-  <main class=\"container\">
-  {{content|safe}}
-  </main>
-  <footer>
-  <div class=\"container\">
-  <div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">{{content-source}}</a> · {{footer|safe}}</p>
-  </div>
-  </footer>
+    <header class=\"site-header\">
+      <div class=\"container\">
+	<div>
+	  <h1><a href=\"{{home-link}}\">{{title}}</a></h1>
+	  <p>{{tagline}}</p>
+	</div>
+      </div>
+    </header>
+    <main class=\"container\">
+      {{content|safe}}
+    </main>
+    <footer>
+      <div class=\"container\">
+	<div class=\"footer\"><p><a target=\"new\" href=\"{{source}}\">{{content-source}}</a> · {{footer|safe}}</p>
+	</div>
+    </footer>
   </body>
   </html>")
+
+(defn set-index-template! [index-tpl]
+  ;; Load index template from file if provided
+  (if-not index-tpl
+    (swap! config assoc :index-template index-default-tpl)
+    (try
+      (log/info "Loading index template from file:" index-tpl)
+      (swap! config assoc :index-template (slurp index-tpl))
+      (catch Exception e
+        (log/error "Failed to load index template file:" index-tpl)
+        (log/error (.getMessage e))))))
 
 (defn page-layout [page-title content title tagline footer source base-path lang-key]
   (let [lang (get ui-strings lang-key)]
     (selmer/render
-     layout-template
+     (:index-template @config)
      {:page-title     page-title
       :content        content
       :title          title
@@ -418,6 +432,7 @@
     (let [opts (cli/parse-opts args {:spec cli-options})]
       (when (:help opts) (show-help))
       (log/merge-config! {:min-level (keyword (:log-level opts))})
+      (set-index-template! (:index-tpl opts))
       ;; Load Topics data
       (let [topics-data (load-topics-data (:topics opts))]
         ;; Start the server
