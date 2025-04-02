@@ -4,7 +4,7 @@ Web application to expose topics.
 
 #+html: <img src="topics.webp" />
 
-* Install
+* Install and run
 
 Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 
@@ -12,7 +12,7 @@ Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 bbin install io.github.bzg/topics
 #+end_src
 
-* Run
+then run =topics= with
 
 #+begin_src sh
 topics # Then check http://localhost:8080
