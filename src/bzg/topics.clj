@@ -4,92 +4,84 @@
 ;; SPDX-License-Identifier: EPL-2.0
 ;; License-Filename: EPL-2.0.txt
 
-;; Topics is a small web application exposing topics, loaded from a
-;; local or distance json file.  You can try it quickly like this:
+;; Topics generates a static HTML/CSS/JS site from topics data.
 ;;
-;; ~$ topics -t https://code.gouv.fr/data/faq.json
-;;
-;; Then check http://localhost:8080
+;; Usage:
+;;   topics faq.json
+;;   topics -t https://code.gouv.fr/data/faq.json
 ;;
 ;; Run topics -h for options.
 ;;
-;; Here is an example json with "title", "content" and "path", which
-;; last item is used to infer the category:
+;; JSON format:
 ;;
-;; [ {
-;;   "title" : "Topic title",
-;;   "content" : "<p>Content as HTML</p>",
-;;   "path" : [ "Section", "Subsection (as category)" ]
-;; } ]
-;;
-;; You can set these options in a edn configuration file:
-;;
-;; topics
-;; topics-sources
-;; title
-;; tagline
-;; footer
-;; log-level
-;; base-path
-;; template
+;; [
+;;   {
+;;     "title": "Topic title",
+;;     "content": "<p>HTML</p>",
+;;     "path": [
+;;       "Section",
+;;       "Category"
+;;     ]
+;;   }
+;; ]
 
 (ns bzg.topics
-  (:require [org.httpkit.server :as server]
-            [cheshire.core :as json]
-            [clojure.string :as str]
+  (:require [cheshire.core :as json]
             [babashka.cli :as cli]
             [clj-yaml.core :as yaml]
-            [taoensso.timbre :as log]
-            [selmer.parser :as selmer]
-            [clojure.edn :as edn]))
+            [clojure.edn :as edn]
+            [babashka.fs :as fs]
+            [babashka.curl :as curl]
+            [clojure.string :as str]))
+
+(def defaults
+  {:format  "auto"
+   :title   "Topics"
+   :tagline "Topics to explore"
+   :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"
+   :lang    "en"})
 
 (def cli-options
-  {:topics         {:alias :t :desc "Path to topics file (JSON, EDN, or YAML if pod is installed)" :ref "<file|url>"}
-   :topics-sources {:alias :s :desc "Path to topics source URL" :ref "<url>"}
-   :format         {:alias :f :desc "Format of topics file (json, edn, yaml, or auto, the default)" :ref "<string>" :default "auto"}
-   :title          {:alias :T :desc "Website title (default \"Topics\")" :ref "<string>" :default "Topics"}
-   :tagline        {:alias :L :desc "Website tagline (default \"Topics to explore\")" :ref "<string>" :default "Topics to explore"}
-   :footer         {:alias :F :desc "Footer text (default: link to \"Topics\" source code)" :ref "<string>" :default "<a href=\"https://github.com/bzg/topics\">Topics</a>"}
-   :log-level      {:alias :l :desc "Set log level: debug, info (the default), warn or error" :ref "<string>" :default "info" :coerce :string}
-   :base-path      {:alias :b :desc "Base path for subdirectory deployment (e.g., /topics)" :ref "<path>" :default ""}
-   :port           {:alias :p :desc "Port number for server (default 8080)" :ref "<int>" :default 8080 :coerce :int}
-   :template       {:alias :I :desc "Path to custom HTML template file" :ref "<file>" :coerce :string}
-   :config         {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>" :coerce :string}
-   :help           {:alias :h :desc "Show help" :type :boolean}})
+  {:topics  {:alias :t :desc "Path or URL to topics file (JSON, EDN, or YAML)" :ref "<file|url>"}
+   :format  {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>"
+             :validate #(contains? #{"auto" "json" "edn" "yaml"} %)}
+   :title   {:alias :T :desc "Website title" :ref "<string>"}
+   :tagline {:alias :L :desc "Website tagline" :ref "<string>"}
+   :footer  {:alias :F :desc "Footer HTML" :ref "<string>"}
+   :source  {:alias :s :desc "URL to display as content source" :ref "<url>"}
+   :lang    {:alias :g :desc "Language: en or fr" :ref "<string>"}
+   :css     {:alias :C :desc "Custom CSS file to include (overrides default styles)" :ref "<file>"}
+   :config  {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
+   :verbose {:alias :v :desc "Enable verbose output" :type :boolean}
+   :help    {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
-  {:fr {:search-placeholder      "Rechercher"
-        :clear-search            "Effacer la recherche"
-        :searching               "Recherche..."
-        :no-search-results       "Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes."
-        :no-category-results     "Aucun résultat trouvé dans cette catégorie."
-        :topics-count            " sujets"
-        :content-not-found-title "Contenu introuvable"
-        :page-not-found-title    "Page non trouvée"
-        :article-not-found       "L'article demandé n'existe pas"
-        :page-not-found          "La page demandée n'existe pas"
-        :check-url-search        "Vérifiez l'URL ou effectuez une nouvelle recherche."
-        :check-url-home          "Vérifiez l'URL ou retournez à l'accueil."
-        :home-title              "Accueil"
-        :content-source          "Source des contenus"
-        :skip-to-content         "Passer au contenu"
-        :lang                    "fr"}
-   :en {:search-placeholder      "Search"
-        :clear-search            "Clear search"
-        :searching               "Searching..."
-        :no-search-results       "No results match your search. Try with other terms."
-        :no-category-results     "No results found in this category."
-        :topics-count            " topics"
-        :content-not-found-title "Content not found"
-        :page-not-found-title    "Page not found"
-        :article-not-found       "The requested article does not exist"
-        :page-not-found          "The requested page does not exist"
-        :check-url-search        "Check the URL or perform a new search."
-        :check-url-home          "Check the URL or return to the homepage."
-        :home-title              "Home"
-        :content-source          "Content source"
-        :skip-to-content         "Skip to content"
-        :lang                    "en"}})
+  {:fr {:search-placeholder  "Rechercher"
+        :clear-search        "Effacer la recherche"
+        :no-search-results   "Aucun résultat ne correspond à votre recherche. Essayez avec d'autres termes."
+        :no-category-results "Aucun résultat trouvé dans cette catégorie."
+        :topics-count        "sujets"
+        :content-source      "Source des contenus"
+        :skip-to-content     "Passer au contenu"
+        :all-categories      "Toutes les catégories"
+        :lang                "fr"}
+   :en {:search-placeholder  "Search"
+        :clear-search        "Clear search"
+        :no-search-results   "No results match your search. Try with other terms."
+        :no-category-results "No results found in this category."
+        :topics-count        "topics"
+        :content-source      "Content source"
+        :skip-to-content     "Skip to content"
+        :all-categories      "All categories"
+        :lang                "en"}})
+
+(def config-keys [:title :tagline :footer :source :lang :css :verbose])
+
+(defn log [verbose & args] (when verbose (apply println args)))
+
+;; Keep only maps with :path and :title
+(defn valid-topics [topics-data]
+  (filter #(and (map? %) (:path %) (:title %)) topics-data))
 
 (defn detect-format [source format-option]
   (if (= format-option "auto")
@@ -97,638 +89,411 @@
       (re-find #"(?i)\.edn$" source)        :edn
       (re-find #"(?i)\.(yaml|yml)$" source) :yaml
       :else                                 :json)
-    (keyword format-option)))
+    (let [fmt (keyword format-option)]
+      (if (#{:edn :yaml :json} fmt)
+        fmt
+        (throw (ex-info (str "Unsupported format: " format-option)
+                        {:format format-option}))))))
 
-(defn load-topics-data [source & [format-option]]
+(defn http-url? [s]
+  (boolean (re-find #"^https?://" s)))
+
+(defn load-topics-data [source format-option verbose]
   (try
-    (log/info "Loading Topics data from" source)
-    (let [content (slurp source)
+    (log verbose "Loading Topics data from" source)
+    (let [content (if (http-url? source)
+                    (do
+                      (log verbose "Detected HTTP(S) URL, using babashka.curl")
+                      (let [{:keys [status body] :as resp} (curl/get source {:throw false})]
+                        (when (or (nil? status) (>= status 400))
+                          (throw (ex-info (str "HTTP error " status " when fetching " source)
+                                          {:status status :response resp})))
+                        body))
+                    (slurp source))
           format  (detect-format source format-option)
-          _       (log/info "Using format:" (name format))
-          data    (case format
+          _       (log verbose "Using format:" (name format))
+          parsed  (case format
                     :edn  (edn/read-string content)
                     :yaml (yaml/parse-string content)
-                    (do (log/warn "Unknown format" format "defaulting to JSON")
-                        (json/parse-string content true)))]
-      (log/info "Loaded" (count data) "Topics items")
-      data)
+                    (json/parse-string content true))
+          ;; Normalize parsed data into a sequential collection
+          data    (cond
+                    (sequential? parsed) parsed
+                    (map? parsed)        [parsed]
+                    :else (throw (ex-info "Topics data must be a list or map at the top level"
+                                          {:parsed-type (type parsed)})))
+          valid   (valid-topics data)]
+      (log verbose "Loaded" (count valid) "topics (filtered"
+           (- (count data) (count valid)) "category headers or invalid entries)")
+      {:ok valid})
     (catch Exception e
-      (log/error "Error loading Topics data from" source ":" (.getMessage e)))))
+      {:error (str "Error loading Topics data from " source ": " (.getMessage e))})))
 
-(defn get-preferred-language [headers]
-  (let [accept-language (get headers "accept-language" "en")]
-    (if (str/starts-with? accept-language "fr")
-      :fr
-      :en)))
-
-(defn with-base-path [path base-path]
-  (if (empty? base-path)
-    path
-    (str (str/replace base-path #"/$" "") path)))
-
-(defn safe-url-encode [s]
-  (when (not-empty s)
-    (-> s
-        (java.net.URLEncoder/encode "UTF-8")
-        (str/replace
-         #"(\+|%28|%29|%2C)"
-         #(case (first %) \+ "%20" \% (case (subs % 1) "28" "(" "29" ")" "2C" "," %))))))
-
-(defn safe-url-encode [s]
-  (when (not-empty s)
-    (-> s
-        (java.net.URLEncoder/encode "UTF-8")
-        (str/replace "+" "%20") ;; Replace + with %20 for spaces
-        (str/replace "%28" "(") ;; Keep common characters readable
-        (str/replace "%29" ")")
-        (str/replace "%2C" ","))))
-
-(defn safe-url-decode [s]
-  (when (not-empty s)
-    (try
-      (java.net.URLDecoder/decode s "UTF-8")
-      (catch Exception _
-        (log/warn "Error decoding URL parameter:" s)))))
-
-(defn strip-html [html]
-  (when (not-empty html)
-    (-> html
-        (str/replace #"<[^>]*>" "")
-        (str/replace
-         #"&(nbsp|lt|gt|amp|quot|apos);"
-         #(case (second %) "nbsp" " " "lt" "<" "gt" ">" "amp" "&" "quot" "\"" "apos" "'")))))
-
-(defn sanitize-search-query [query]
-  (when (not-empty query)
-    (-> query
-        (str/replace #"[<>]" "")
-        (str/replace #"[\\'\";`]" "")
-        (str/trim))))
-
-(defn normalize-text [text]
-  (when (not-empty text)
-    (-> text
-        str/lower-case
-        (str/replace #"[àáâãäå]" "a")
-        (str/replace #"[èéêë]" "e")
-        (str/replace #"[ìíîï]" "i")
-        (str/replace #"[òóôõö]" "o")
-        (str/replace #"[ùúûü]" "u")
-        (str/replace #"[ýÿ]" "y")
-        (str/replace #"[çñœæ]" #(case % "ç" "c" "ñ" "n" "œ" "oe" "æ" "ae"))
-        (str/replace #"[.,;:!?'\"/\\(\\)\\[\\]{}]+" " ")
-        (str/replace #"\s+" " ")
-        str/trim)))
-
-(defn search-topics [query topics-data]
-  (when (not-empty query)
-    (let [query-norm (normalize-text (sanitize-search-query query))]
-      (filter (fn [{:keys [title content path]}]
-                (or (str/includes? (normalize-text title) query-norm)
-                    (str/includes? (normalize-text (strip-html content)) query-norm)
-                    (some #(str/includes? (normalize-text %) query-norm) path)))
-              topics-data))))
-
-(defn get-categories [topics-data]
-  (let [paths      (map :path topics-data)
-        categories (distinct (map last paths))]
-    (sort categories)))
-
-(def get-topics-by-category
-  (memoize
-   (fn [category topics-data]
-     (filter #(= (last (:path %)) category) topics-data))))
-
-(def config (atom {}))
-
-(def default-template
-  "<!DOCTYPE html>
-<html lang=\"{{lang}}\" data-theme=\"light\">
-  <head>
-    <meta charset=\"utf-8\">
-    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
-    <title>{{page-title}} - {{title}}</title>
-    <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
-    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
-    <script src=\"https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js\"></script>
-    <style>
-      /* Custom styles with improved accessibility */
-      :root {
-        --color-primary: #1a73e8;
-        --color-primary-hover: #0d47a1;
-        --color-text: #202124;
-        --color-text-light: #5f6368;
-        --color-background: #ffffff;
-        --color-background-alt: #f8f9fa;
-        --color-border: #dee2e6;
-        --color-focus-outline: #4285f4;
-        --color-focus-ring: rgba(66, 133, 244, 0.4);
-        --color-alert-info-bg: #e8f0fe;
-        --color-alert-info-border: #aecbfa;
-        --color-alert-info-text: #174ea6;
-        --color-alert-error-bg: #fce8e6;
-        --color-alert-error-border: #f6aea9;
-        --color-alert-error-text: #c5221f;
-      }
-
-      /* Improve keyboard focus visibility */
-      *:focus {
-        outline: 2px solid var(--color-focus-outline) !important;
-        outline-offset: 2px !important;
-        box-shadow: 0 0 0 4px var(--color-focus-ring) !important;
-      }
-
-      .skip-link {
-        position: absolute;
-        top: -40px;
-        left: 0;
-        background: var(--color-primary);
-        color: white;
-        padding: 8px;
-        z-index: 100;
-        transition: top 0.3s;
-      }
-      .skip-link:focus {
-        top: 0;
-      }
-
-      .container {max-width: 1200px; margin: 0 auto; padding: 0 1rem;}
-      header.site-header {padding: 1rem 0; background-color: var(--color-background-alt); margin-bottom: 2rem;}
-      footer {margin-top: 3rem; padding: 2rem 0; background-color: var(--color-background-alt);}
-
-      .category-card {height: 100%; display: flex; flex-direction: column;}
-      .category-card > a {
-        flex-grow: 1;
-        display: flex;
-        flex-direction: column;
-        padding: 1.5rem;
-        text-decoration: none;
-        color: var(--color-text);
-        border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        background-color: var(--color-background);
-        transition: transform 0.2s, box-shadow 0.2s;
-      }
-      .category-card > a:hover, .category-card > a:focus {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-        text-decoration: none;
-      }
-
-      .grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 2rem;
-      }
-
-      details {
-        margin-bottom: 1rem;
-        border: 1px solid var(--color-border);
-        border-radius: 0.5rem;
-        padding: 1rem;
-      }
-      details summary {
-        cursor: pointer;
-        font-weight: bold;
-        padding: 0.5rem 0;
-        list-style-position: outside;
-        margin-left: 1.5rem;
-      }
-      details summary::-webkit-details-marker {
-        color: var(--color-primary);
-      }
-      details summary::marker {
-        color: var(--color-primary);
-      }
-      details[open] summary {
-        margin-bottom: 1rem;
-      }
-
-      .back-link {
-        display: inline-flex;
-        align-items: center;
-        margin-bottom: 1rem;
-      }
-      .back-link::before {
-        content: '←';
-        margin-right: 0.5rem;
-      }
-
-      .search-form {margin-bottom: 3rem;}
-      .search-container {
-        display: flex;
-        gap: 0.5rem;
-        margin-bottom: 2rem;
-        align-items: center;
-      }
-      .search-container input[type=\"search\"] {
-        flex-grow: 1;
-      }
-      .search-container input[type=\"search\"]:focus {
-        border-color: var(--color-focus-outline);
-      }
-
-      .alert {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-      }
-      .alert-info {
-        background-color: var(--color-alert-info-bg);
-        border: 1px solid var(--color-alert-info-border);
-        color: var(--color-alert-info-text);
-      }
-      .alert-error {
-        background-color: var(--color-alert-error-bg);
-        border: 1px solid var(--color-alert-error-border);
-        color: var(--color-alert-error-text);
-      }
-
-      .footer {
-        text-align: center;
-        font-size: .8rem;
-      }
-
-      .clear-button {
-        border: 1px solid var(--color-border);
-        border-radius: 1rem;
-        padding: 0.25rem 0.5rem;
-        background-color: var(--color-background);
-        color: var(--color-text);
-        cursor: pointer;
-      }
-      .clear-button:hover, .clear-button:focus {
-        background-color: var(--color-background-alt);
-      }
-
-      .search-results {margin-top: 1rem;}
-      .htmx-indicator {opacity: 0; transition: opacity 200ms ease-in;}
-      .htmx-request .htmx-indicator {opacity: 1;}
-      .htmx-request.htmx-indicator {opacity: 1;}
-
-      a:not(.category-card > a):not(.clear-button) {
-        text-decoration: underline;
-      }
-    </style>
-  </head>
-  <body>
-    <a href=\"#main-content\" class=\"skip-link\">{{skip-to-content}}</a>
-
-    <header class=\"site-header\" role=\"banner\">
-      <div class=\"container\">
-        <div>
-          <h1><a href=\"{{home-link}}\" aria-label=\"{{title}} - {{home-title}}\">{{title}}</a></h1>
-          <p>{{tagline}}</p>
-        </div>
-      </div>
-    </header>
-
-    <main class=\"container\" id=\"main-content\" tabindex=\"-1\">
-      {% ifequal content-type \"home\" %}
-      <!-- Search component -->
-      <div class=\"search-container\" role=\"search\">
-        <label for=\"search-input\" class=\"visually-hidden\">{{search-placeholder}}</label>
-        <input placeholder=\"{{search-placeholder}}\"
-               type=\"search\"
-               id=\"search-input\"
-               name=\"q\"
-               value=\"{{search-query|safe}}\"
-               hx-get=\"{{home-link}}\"
-               hx-push-url=\"true\"
-               hx-trigger=\"keyup changed delay:300ms, search\"
-               hx-target=\"#topics-content\"
-               hx-indicator=\".htmx-indicator\"
-               aria-label=\"{{search-placeholder}}\"
-               aria-controls=\"topics-content\">
-        <button type=\"button\"
-                class=\"clear-button{% if search-query|empty? %} hidden{% endif %}\"
-                id=\"clear-search\"
-                title=\"{{clear-search}}\"
-                aria-label=\"{{clear-search}}\"
-                hx-get=\"{{home-link}}\"
-                hx-push-url=\"true\"
-                hx-target=\"#topics-content\"
-                onclick=\"document.getElementById('search-input').value=''\">X</button>
-        <div class=\"htmx-indicator\" aria-live=\"polite\">
-          <small>{{searching}}</small>
-        </div>
-      </div>
-
-      <!-- START-HTMX-CONTENT -->
-      <div id=\"topics-content\" aria-live=\"polite\">
-	{% if search-query|not-empty %}
-	<!-- Search results -->
-	{% if topics|empty? %}
-	<div class=\"alert alert-info\" role=\"alert\">
-          <p>{{no-search-results}}</p>
-	</div>
-	{% else %}
-	<div>
-          {% for topic in topics %}
-          <details>
-            <summary aria-expanded=\"false\" aria-controls=\"topic-{{forloop.counter}}\">{{topic.title}}</summary>
-            <div id=\"topic-{{forloop.counter}}\">{{topic.content|safe}}</div>
-          </details>
-          {% endfor %}
-	</div>
-	{% endif %}
-	{% else %}
-	{% if category|not-empty %}
-	<!-- Category results -->
-	{% if topics|empty? %}
-        <div class=\"alert alert-info\" role=\"alert\">
-          <p>{{no-category-results}}</p>
-        </div>
-	{% else %}
-        <div>
-          {% for topic in topics %}
-          <details>
-            <summary aria-expanded=\"false\" aria-controls=\"topic-{{forloop.counter}}\">{{topic.title}}</summary>
-            <div id=\"topic-{{forloop.counter}}\">{{topic.content|safe}}</div>
-          </details>
-          {% endfor %}
-        </div>
-	{% endif %}
-	{% else %}
-	<!-- Categories grid -->
-	<nav aria-label=\"Categories\" class=\"grid\">
-          {% for cat-item in categories-with-counts %}
-          <div class=\"category-card\">
-            <a href=\"{{home-link}}?category={{cat-item.name|url-encode}}\"
-               hx-get=\"{{home-link}}?category={{cat-item.name|url-encode}}\"
-               hx-push-url=\"true\"
-               hx-target=\"#topics-content\"
-               aria-label=\"{{cat-item.name}} - {{cat-item.count}} {{topics-count}}\">
-              <h3>{{cat-item.name}}</h3>
-              <p>{{cat-item.count}} {{topics-count}}</p>
-            </a>
-          </div>
-          {% endfor %}
-	</nav>
-	{% endif %}
-	{% endif %}
-      </div>
-      <!-- END-HTMX-CONTENT -->
-      {% endifequal %}
-
-      {% ifequal content-type \"error\" %}
-      <!-- Error pages -->
-      <div class=\"search-container\" role=\"search\">
-        <label for=\"search-input\" class=\"visually-hidden\">{{search-placeholder}}</label>
-        <input placeholder=\"{{search-placeholder}}\"
-               type=\"search\"
-               id=\"search-input\"
-               name=\"q\"
-               value=\"\"
-               hx-get=\"{{home-link}}\"
-               hx-push-url=\"true\"
-               hx-trigger=\"keyup changed delay:300ms, search\"
-               hx-target=\"#topics-content\"
-               hx-indicator=\".htmx-indicator\"
-               aria-label=\"{{search-placeholder}}\"
-               aria-controls=\"topics-content\">
-        <div class=\"htmx-indicator\" aria-live=\"polite\">
-          <small>{{searching}}</small>
-        </div>
-      </div>
-      <div id=\"topics-content\" aria-live=\"polite\">
-        <h2>{% ifequal error-type \"not-found\" %}{{content-not-found-title}}{% else %}{{page-not-found-title}}{% endifequal %}</h2>
-        <div class=\"alert alert-error\" role=\"alert\">
-          <h3>{% ifequal error-type \"not-found\" %}{{article-not-found}}{% else %}{{page-not-found}}{% endifequal %}</h3>
-          <p>{% ifequal error-type \"not-found\" %}{{check-url-search}}{% else %}{{check-url-home}}{% endifequal %}</p>
-        </div>
-      </div>
-      {% endifequal %}
-    </main>
-
-    <footer role=\"contentinfo\">
-      <div class=\"container\">
-        <div class=\"footer\"><p><a target=\"_blank\" rel=\"noopener\" href=\"{{source}}\" aria-label=\"{{content-source}}\">{{content-source}}</a> · {{footer|safe}}</p>
-        </div>
-      </div>
-    </footer>
-  </body>
-</html>")
-
-;; Add special markers to identify the HTMX content section
-(def htmx-content-start-marker "<!-- START-HTMX-CONTENT -->")
-(def htmx-content-end-marker "<!-- END-HTMX-CONTENT -->")
-
-(selmer/add-filter! :url-encode safe-url-encode)
-(selmer/add-filter! :get (fn [m k] (get m k)))
-
-(defn load-config-file [config-path]
+(defn load-config-file [config-path verbose]
   (try
-    (log/info "Loading configuration from file:" config-path)
+    (log verbose "Loading configuration from file:" config-path)
     (let [config-data (edn/read-string (slurp config-path))]
-      (log/info "Configuration loaded successfully")
-      config-data)
+      (log verbose "Configuration loaded successfully")
+      {:ok config-data})
     (catch Exception e
-      (log/error "Failed to load configuration file:" config-path)
-      (log/error (.getMessage e))
-      nil)))
+      {:error (str "Failed to load configuration file " config-path ": " (.getMessage e))})))
 
-(defn init-config [opts]
-  (reset! config
-          {:topics         (:topics opts)
-           :topics-sources (:topics-sources opts)
-           :title          (:title opts)
-           :tagline        (:tagline opts)
-           :footer         (:footer opts)
-           :log-level      (:log-level opts)
-           :base-path      (:base-path opts)
-           :port           (:port opts)}))
+;; Normalize topics into a common structure with optional categories.
+;;
+;; If *no* entry has path length > 1:
+;;   - treat everything as a flat list (no categories)
+;;   - category is always nil
+;;
+;; If *any* entry has path length > 1:
+;;   - use first element of path as :category
+;;   - treat every such entry as a topic
+;;   - entries with shorter paths are ignored (considered headers)
+(defn categorize-topics [topics-data]
+  (let [valid      (valid-topics topics-data)
+        has-nested? (some #(> (count (:path %)) 1) valid)]
+    (if has-nested? ;; nested mode: only level-2+ are topics
+      (->> valid
+           (filter #(> (count (:path %)) 1))
+           (map (fn [{:keys [title content path]}]
+                  {:title    (or title "")
+                   ;; NOTE: :content is HTML injected directly into the page.
+                   ;; Only use trusted sources or sanitize upstream.
+                   :content  (str (or content ""))
+                   :category (first path)})))
+      ;; Flat mode: ignore categories
+      (->> valid
+           (map (fn [{:keys [title content]}]
+                  {:title    (or title "")
+                   :content  (str (or content ""))
+                   :category nil}))))))
 
-(defn set-template! [template-path]
-  (if-not template-path
-    (swap! config assoc :template default-template)
-    (try
-      (log/info "Loading template from file:" template-path)
-      (swap! config assoc :template (slurp template-path))
-      (catch Exception e
-        (log/error "Failed to load template file:" template-path)
-        (log/error (.getMessage e))
-        (swap! config assoc :template default-template)))))
+(defn topics-to-js-array [topics-data]
+  (-> topics-data
+      categorize-topics
+      json/generate-string
+      ;; Prevent script injection via JSON payload
+      (str/replace "</" "<\\/")))
 
-(defn prepare-template-data [topics-data search-query category base-path]
-  (let [filtered-topics        (cond
-                                 (not-empty search-query) (search-topics search-query topics-data)
-                                 (not-empty category)     (get-topics-by-category category topics-data)
-                                 :else                    nil)
-        categories             (get-categories topics-data)
-        category-counts        (into {} (map (fn [c] [c (count (get-topics-by-category c topics-data))]) categories))
-        categories-with-counts (map (fn [cat] {:name cat :count (get category-counts cat)}) categories)]
-    {:search-query           search-query
-     :category               category
-     :topics                 filtered-topics
-     :categories             categories
-     :category-counts        category-counts
-     :categories-with-counts categories-with-counts
-     :home-link              (with-base-path "/" base-path)}))
+(def css-styles "
+.skip-link { position: absolute; top: -40px; left: 0; background: var(--pico-primary); color: #fff; padding: .5rem; z-index: 100; }
+.skip-link:focus { top: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
+.card { padding: 1.5rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-muted-border-color); transition: transform .2s, box-shadow .2s; }
+.card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,.1); text-decoration: none; }
+.card h3 { margin-bottom: .5rem; }
+.card p { margin: 0; color: var(--pico-muted-color); }
+.search-row { display: flex; gap: .5rem; align-items: center; margin-bottom: 2rem; }
+.search-row input { flex: 1; margin: 0; }
+.back-link { display: inline-block; margin-bottom: 1.5rem; }
+.back-link::before { content: '← '; }
+details { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
+details summary { font-weight: 600; cursor: pointer; }
+details[open] summary { margin-bottom: .75rem; }
+.hidden { display: none !important; }
+footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
 
-(defn extract-htmx-content [rendered-template]
-  (let [start-idx (str/index-of rendered-template htmx-content-start-marker)
-        end-idx   (str/index-of rendered-template htmx-content-end-marker)]
-    (when (and start-idx end-idx (< start-idx end-idx))
-      (-> rendered-template
-          (subs (+ start-idx (count htmx-content-start-marker)) end-idx)
-          str/trim))))
+(defn generate-js [topics-data lang]
+  (let [strings-json (json/generate-string
+                      {:noSearchResults   (:no-search-results lang)
+                       :noCategoryResults (:no-category-results lang)
+                       :topicsCount       (:topics-count lang)
+                       :allCategories     (:all-categories lang)})]
+    (str "(function() {
+  'use strict';
+  const topicsData = " (topics-to-js-array topics-data) ";
+  const strings = " strings-json ";
+  let currentCategory = null;
+  let currentSearch = '';
+  const contentDiv = document.getElementById('topics-content');
+  const searchInput = document.getElementById('search-input');
+  const clearButton = document.getElementById('clear-search');
+  const homeLink = document.getElementById('home-link');
 
-(defn render-page [content-type data title tagline footer source base-path lang-key]
-  (let [lang (get ui-strings lang-key)]
-    (selmer/render
-     (:template @config)
-     (merge
-      ;; Base template data
-      {:content-type content-type
-       :title        title
-       :tagline      tagline
-       :footer       footer
-       :source       source
-       :home-link    (with-base-path "/" base-path)
-       :page-title   (get data :page-title (:home-title lang))}
-      lang
-      data))))
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
 
-(defn home-page [topics-data base-path search-query category lang-key]
-  (let [template-data (prepare-template-data topics-data search-query category base-path)]
-    (render-page
-     "home"
-     (assoc template-data :page-title (get-in ui-strings [lang-key :home-title]))
-     (:title @config)
-     (:tagline @config)
-     (:footer @config)
-     (:topics-sources @config)
-     base-path
-     lang-key)))
+  function normalizeText(text) {
+    return String(text || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\\u0300-\\u036f]/g, '')
+      .replace(/['’]/g, \"'\");
+  }
 
-(defn error-page [error-type base-path lang-key]
-  (render-page
-   "error"
-   {:error-type error-type
-    :page-title (if (= error-type :not-found)
-                  (get-in ui-strings [lang-key :content-not-found-title])
-                  (get-in ui-strings [lang-key :page-not-found-title]))}
-   (:title @config)
-   (:tagline @config)
-   (:footer @config)
-   (:topics-sources @config)
-   base-path
-   lang-key))
+  function getCategories() {
+    const cats = {};
+    topicsData.forEach(t => {
+      const cat = (t.category == null || t.category === '') ? strings.allCategories : t.category;
+      cats[cat] = (cats[cat] || 0) + 1;
+    });
+    return Object.entries(cats)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
 
-(defn strip-base-path [uri base-path]
-  (let [base-len (count base-path)]
-    (if (and (seq base-path)
-             (str/starts-with? uri base-path))
-      (let [path (subs uri base-len)]
-        (if (str/starts-with? path "/")
-          path
-          (str "/" path)))
-      uri)))
+  function isSinglePseudoCategory(categories) {
+    return categories.length === 1 && categories[0].name === strings.allCategories;
+  }
 
-(defn parse-query-string [query-string]
-  (when (not-empty query-string)
-    (into {}
-          (comp
-           (map #(str/split % #"=" 2))
-           (filter #(and (first %) (not-empty (first %))))
-           (map (fn [[k v]]
-                  [(keyword (safe-url-decode k))
-                   (safe-url-decode (or v ""))])))
-          (str/split query-string #"&"))))
+  function searchTopics(query) {
+    const normalized = normalizeText(query);
+    return topicsData.filter(t => {
+      const title = normalizeText(t.title);
+      const content = normalizeText(t.content);
+      return title.includes(normalized) || content.includes(normalized);
+    });
+  }
 
-(defn create-app [topics-data]
-  (fn [{:keys [request-method uri query-string headers]}]
-    (let [path            (strip-base-path uri (:base-path @config))
-          params          (parse-query-string query-string)
-          search-query    (:q params)
-          category        (:category params)
-          is-htmx-request (get headers "hx-request")
-          lang-key        (get-preferred-language headers)]
-      (case [request-method path]
-        [:get "/"]
-        (if is-htmx-request
-          ;; For HTMX requests, render the full page but extract just the content portion
-          (let [full-page    (home-page
-                              topics-data
-                              (:base-path @config)
-                              search-query
-                              category
-                              lang-key)
-                htmx-content (extract-htmx-content full-page)]
-            {:status  200
-             :headers {"Content-Type" "text/html; charset=utf-8"}
-             :body    htmx-content})
-          ;; Return full page for direct browser requests
-          {:status  200
-           :headers {"Content-Type" "text/html; charset=utf-8"}
-           :body    (home-page
-                     topics-data
-                     (:base-path @config)
-                     search-query
-                     category
-                     lang-key)})
-        [:get "/robots.txt"]
-        {:status  200
-         :headers {"Content-Type" "text/plain"}
-         :body    "User-agent: *\nAllow: /\n"}
-        ;; Default - return 404
-        {:status  404
-         :headers {"Content-Type" "text/html; charset=utf-8"}
-         :body    (error-page
-                   :not-found
-                   (:base-path @config)
-                   lang-key)}))))
+  function getTopicsByCategory(category) {
+    // In flat mode, all topics have category = null and we use a single
+    // pseudo-category name (strings.allCategories) in the UI.
+    if (!topicsData.length) return [];
+    const anyCat = topicsData.find(t => t.category != null && t.category !== null && t.category !== '');
+    if (!anyCat) {
+      // flat mode: any category selection shows all topics
+      return topicsData.slice();
+    }
+    return topicsData.filter(t => t.category === category);
+  }
+
+  function renderCategoriesGrid() {
+    const categories = getCategories();
+    let html = '<nav class=\"grid\">';
+    categories.forEach(cat => {
+      html += `<a href=\"#\" class=\"card\" data-category=\"${escapeHtml(cat.name)}\">
+        <h3>${escapeHtml(cat.name)}</h3>
+        <p>${cat.count} ${strings.topicsCount}</p>
+      </a>`;
+    });
+    return html + '</nav>';
+  }
+
+  function renderTopicsList(topics, showBackLink = false) {
+    if (topics.length === 0) {
+      const msg = currentSearch ? strings.noSearchResults : strings.noCategoryResults;
+      return `<p><em>${msg}</em></p>`;
+    }
+    let html = showBackLink ? `<a href=\"#\" class=\"back-link\" id=\"back-to-categories\">${strings.allCategories}</a>` : '';
+    topics.forEach(t => {
+      html += `<details>
+        <summary>${escapeHtml(t.title)}</summary>
+        <div>${t.content}</div>
+      </details>`;
+    });
+    return html;
+  }
+
+  function render() {
+    let html;
+    const categories = getCategories();
+
+    if (currentSearch) {
+      html = renderTopicsList(searchTopics(currentSearch), false);
+    } else if (currentCategory) {
+      html = renderTopicsList(getTopicsByCategory(currentCategory), true);
+    } else if (isSinglePseudoCategory(categories)) {
+      // Only one pseudo-category (flat data): show all topics directly
+      html = renderTopicsList(topicsData, false);
+    } else {
+      html = renderCategoriesGrid();
+    }
+
+    contentDiv.innerHTML = html;
+
+    if (currentCategory && !currentSearch) {
+      const backLink = document.getElementById('back-to-categories');
+      if (backLink) {
+        backLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          currentCategory = null;
+          updateUrl();
+          render();
+        });
+      }
+    }
+
+    document.querySelectorAll('[data-category]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        currentCategory = el.dataset.category;
+        currentSearch = '';
+        searchInput.value = '';
+        clearButton.classList.add('hidden');
+        updateUrl();
+        render();
+      });
+    });
+  }
+
+  function updateUrl() {
+    const params = new URLSearchParams();
+    if (currentSearch) params.set('q', currentSearch);
+    else if (currentCategory) params.set('category', currentCategory);
+    const newUrl = params.toString() ? window.location.pathname + '?' + params.toString() : window.location.pathname;
+    history.pushState({}, '', newUrl);
+  }
+
+  function parseUrl() {
+    const params = new URLSearchParams(window.location.search);
+    currentSearch = params.get('q') || '';
+    currentCategory = params.get('category') || null;
+    if (currentSearch) {
+      searchInput.value = currentSearch;
+      clearButton.classList.remove('hidden');
+    }
+  }
+
+  let searchTimeout;
+  searchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    const value = e.target.value.trim();
+    clearButton.classList.toggle('hidden', !value);
+    searchTimeout = setTimeout(() => {
+      currentSearch = value;
+      if (value) currentCategory = null;
+      updateUrl();
+      render();
+    }, 300);
+  });
+
+  clearButton.addEventListener('click', () => {
+    searchInput.value = '';
+    currentSearch = '';
+    clearButton.classList.add('hidden');
+    updateUrl();
+    render();
+    searchInput.focus();
+  });
+
+  homeLink.addEventListener('click', (e) => {
+    e.preventDefault();
+    currentSearch = '';
+    currentCategory = null;
+    searchInput.value = '';
+    clearButton.classList.add('hidden');
+    updateUrl();
+    render();
+  });
+
+  window.addEventListener('popstate', () => { parseUrl(); render(); });
+  parseUrl();
+  render();
+})();")))
+
+(defn html-escape [s]
+  (-> (or s "")
+      (str/replace "&" "&amp;")
+      (str/replace "<" "&lt;")
+      (str/replace ">" "&gt;")
+      (str/replace "\"" "&quot;")
+      (str/replace "'" "&#39;")))
+
+(defn generate-head [config css-file]
+  (str "<head>
+  <meta charset=\"utf-8\">
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
+  <title>" (html-escape (:title config)) "</title>
+  <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
+  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
+  <style>" css-styles "</style>"
+       (when css-file "\n  <link rel=\"stylesheet\" href=\"custom.css\">") "
+</head>"))
+
+(defn generate-header [config]
+  (str "<header class=\"container\">
+    <h1><a href=\"./\" id=\"home-link\">" (html-escape (:title config)) "</a></h1>
+    <p>" (html-escape (:tagline config)) "</p>
+  </header>"))
+
+(defn generate-main [lang]
+  (str "<main class=\"container\" id=\"main-content\" tabindex=\"-1\">
+    <div class=\"search-row\" role=\"search\">
+      <input placeholder=\"" (:search-placeholder lang) "\" type=\"search\" id=\"search-input\" name=\"q\">
+      <button type=\"button\" class=\"secondary outline hidden\" id=\"clear-search\" aria-label=\"" (:clear-search lang) "\">✕</button>
+    </div>
+    <div id=\"topics-content\" aria-live=\"polite\"></div>
+  </main>"))
+
+(defn generate-footer [config lang]
+  (str "<footer class=\"container\">
+    <p>" (when-let [src (:source config)]
+           (str "<a target=\"_blank\" href=\"" src "\">" (:content-source lang) "</a> · "))
+       (:footer config) "</p>
+  </footer>"))
+
+(defn generate-html [config topics-data]
+  (let [cfg-lang (some-> (:lang config) name keyword)
+        lang     (or (get ui-strings cfg-lang)
+                     (:en ui-strings))
+        _        (when (and (:verbose config)
+                            (not (contains? ui-strings cfg-lang)))
+                   (println "Warning: unsupported lang" (:lang config) "- defaulting to en"))
+        css-file (:css config)]
+    (str "<!DOCTYPE html>
+<html lang=\"" (html-escape (:lang lang)) "\" data-theme=\"light\">
+" (generate-head config css-file) "
+<body>
+  <a href=\"#main-content\" class=\"skip-link\">" (:skip-to-content lang) "</a>
+  " (generate-header config) "
+  " (generate-main lang) "
+  " (generate-footer config lang) "
+  <script>" (generate-js topics-data lang) "</script>
+</body>
+</html>")))
+
+(defn generate-site [opts]
+  (let [verbose       (:verbose opts)
+        file-config   (when-let [config-path (:config opts)]
+                        (let [result (load-config-file config-path verbose)]
+                          (if (:error result)
+                            (do (println (:error result)) (System/exit 1))
+                            (:ok result))))
+        ;; Only allow known config keys from file
+        file-config   (some-> file-config (select-keys config-keys))
+        ;; Correct merge order: Defaults -> File Config -> CLI Arguments
+        config        (merge defaults file-config (select-keys opts config-keys))
+        topics-result (load-topics-data (:topics opts) (:format opts) verbose)]
+    (when (:error topics-result)
+      (println (:error topics-result))
+      (System/exit 1))
+    (let [topics-data (:ok topics-result)]
+      (when-let [css-file (:css config)]
+        (if (and (fs/exists? css-file)
+                 (not (fs/same-file? css-file "custom.css")))
+          (do
+            (fs/copy css-file "custom.css" {:replace-existing true})
+            (log verbose "Copied:" css-file "-> custom.css"))
+          (log verbose "Skipping CSS copy: source matches destination or missing.")))
+      (spit "index.html" (generate-html config topics-data))
+      (println "Generated: index.html"))))
 
 (defn show-help []
-  (println "Usage: topics [options]")
-  (println "\nOptions:")
-  (println
-   (cli/format-opts
-    {:spec (->> cli-options
-                (map (fn [[k v]] [k (dissoc v :default)]))
-                (into (sorted-map)))}))
+  (println "Usage: topics [options] <file|url>")
+  (println "\nGenerates a static HTML/CSS/JS site from topics data.\n\nOptions:")
+  (println (cli/format-opts {:spec cli-options}))
   (System/exit 0))
 
 (defn -main [& args]
   (try
-    (let [opts (cli/parse-opts args {:spec cli-options})]
+    (let [{:keys [args opts]} (cli/parse-args args {:spec cli-options})
+          ;; If -t/--topics not provided, use first positional arg
+          opts (cond-> opts
+                 (and (not (:topics opts))
+                      (seq args))
+                 (assoc :topics (first args)))]
       (when (:help opts) (show-help))
-      ;; Initialize config with CLI options
-      (init-config opts)
-      ;; Override with config file if provided
-      (when-let [config-path (:config opts)]
-        (when-let [file-config (load-config-file config-path)]
-          ;; Only log sanitized config (without template)
-          (log/debug "Merging config (sanitized):" (dissoc file-config :template))
-          (swap! config merge file-config)))
-      ;; Set log level from config
-      (log/merge-config! {:min-level (keyword (:log-level @config))})
-      ;; Set template (handled in set-template! function)
-      (set-template! (:template @config))
-      ;; Set default template if no template was set
-      (when (nil? (:template @config))
-        (swap! config assoc :template default-template))
-      ;; Load Topics data with format option
-      (let [topics-data (load-topics-data (:topics @config) (:format opts))]
-        (if (nil? topics-data)
-          (do (log/error "No topics provided")
-              (System/exit 1))
-          (do ;; Start the server
-            (log/info (str "Starting server at http://localhost:" (:port @config)))
-            (if (empty? (:base-path @config))
-              (log/info "Running at root path /")
-              (log/info "Running at base path:" (:base-path @config)))
-            (log/info "Site title:" (:title @config))
-            (log/info "Site tagline:" (:tagline @config))
-            (log/info "Topics source:" (:topics-sources @config))
-            (server/run-server
-             (create-app topics-data)
-             {:port (:port @config)})
-            (log/info "Server started. Press Ctrl+C to stop.")
-            @(promise)))))
+      (when-not (:topics opts)
+        (println "Error: topics file or URL is required")
+        (println "You can either pass it as:")
+        (println "  - a positional argument: topics <file|url>")
+        (println "  - or with -t/--topics:   topics -t <file|url>")
+        (show-help))
+      (generate-site opts))
     (catch Exception e
-      (log/error "ERROR:" (.getMessage e))
+      (println "ERROR:" (.getMessage e))
       (System/exit 1))))
 
 (when (= *file* (System/getProperty "babashka.file"))
