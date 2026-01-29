@@ -8,7 +8,8 @@
 ;;
 ;; Usage:
 ;;   topics faq.json
-;;   topics -t https://code.gouv.fr/data/faq.json
+;;   topics -i https://code.gouv.fr/data/faq.json
+;;   topics -n faq.json              # ignore categories (flat list)
 ;;
 ;; Run topics -h for options.
 ;;
@@ -18,7 +19,7 @@
 ;;   {
 ;;     "title": "Topic title",
 ;;     "content": "<p>HTML</p>",
-;;     "category": "Category name"
+;;     "category": "Category name"   // optional
 ;;   }
 ;; ]
 ;;
@@ -56,18 +57,19 @@
    :lang    "en"})
 
 (def cli-options
-  {:topics  {:alias :t :desc "Path or URL to topics file (JSON, EDN, or YAML)" :ref "<file|url>"}
-   :format  {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>"
-             :validate #(contains? #{"auto" "json" "edn" "yaml"} %)}
-   :title   {:alias :T :desc "Website title" :ref "<string>"}
-   :tagline {:alias :L :desc "Website tagline" :ref "<string>"}
-   :footer  {:alias :F :desc "Footer HTML" :ref "<string>"}
-   :source  {:alias :s :desc "URL to display as content source" :ref "<url>"}
-   :lang    {:alias :g :desc "Language: en or fr" :ref "<string>"}
-   :css     {:alias :C :desc "Custom CSS file to include (overrides default styles)" :ref "<file>"}
-   :config  {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
-   :verbose {:alias :v :desc "Enable verbose output" :type :boolean}
-   :help    {:alias :h :desc "Show help" :type :boolean}})
+  {:input-file    {:alias :i :desc "Path or URL to input file (JSON, EDN, or YAML)" :ref "<file|url>"}
+   :format        {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>"
+                   :validate #(contains? #{"auto" "json" "edn" "yaml"} %)}
+   :no-categories {:alias :n :desc "Ignore categories (flat list of topics)" :type :boolean}
+   :title         {:alias :T :desc "Website title" :ref "<string>"}
+   :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
+   :footer        {:alias :F :desc "Footer HTML" :ref "<string>"}
+   :source        {:alias :s :desc "URL to display as content source" :ref "<url>"}
+   :lang          {:alias :g :desc "Language: en or fr" :ref "<string>"}
+   :css           {:alias :C :desc "Custom CSS file to include (overrides default styles)" :ref "<file>"}
+   :config        {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
+   :verbose       {:alias :v :desc "Enable verbose output" :type :boolean}
+   :help          {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
   {:fr {:search-placeholder  "Rechercher"
@@ -93,9 +95,9 @@
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
-;; Keep only maps with :title and :category
+;; Keep only maps with :title (category is optional)
 (defn valid-topics [topics-data]
-  (filter #(and (map? %) (:title %) (contains? % :category)) topics-data))
+  (filter #(and (map? %) (:title %)) topics-data))
 
 (defn detect-format [source format-option]
   (if (= format-option "auto")
@@ -163,12 +165,12 @@
       {:error (str "Failed to load configuration file " config-path ": " (.getMessage e))})))
 
 ;; Normalize topics into a common structure with optional categories.
-(defn categorize-topics [topics-data]
+(defn categorize-topics [topics-data no-categories?]
   (->> (valid-topics topics-data)
        (map (fn [{:keys [title content category]}]
               {:title    (or title "")
                :content  (str (or content ""))
-               :category category}))))
+               :category (when-not no-categories? category)}))))
 
 ;; AST Flattening (for org-parse AST input)
 ;;
@@ -274,9 +276,9 @@
               (max current children-max)))]
     (max-level ast)))
 
-(defn topics-to-js-array [topics-data]
+(defn topics-to-js-array [topics-data no-categories?]
   (-> topics-data
-      categorize-topics
+      (categorize-topics no-categories?)
       json/generate-string
       ;; Prevent script injection via JSON payload
       (str/replace "</" "<\\/")))
@@ -302,7 +304,7 @@ details summary:hover .permalink { opacity: .6; }
 .hidden { display: none !important; }
 footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
 
-(defn generate-js [topics-data lang]
+(defn generate-js [topics-data lang no-categories?]
   (let [strings-json (json/generate-string
                       {:noSearchResults   (:no-search-results lang)
                        :noCategoryResults (:no-category-results lang)
@@ -310,7 +312,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
                        :allCategories     (:all-categories lang)})]
     (str "(function() {
   'use strict';
-  const topicsData = " (topics-to-js-array topics-data) ";
+  const topicsData = " (topics-to-js-array topics-data no-categories?) ";
   const strings = " strings-json ";
   let currentCategory = null;
   let currentSearch = '';
@@ -560,7 +562,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
        (:footer config) "</p>
   </footer>"))
 
-(defn generate-html [config topics-data]
+(defn generate-html [config topics-data no-categories?]
   (let [cfg-lang (some-> (:lang config) name keyword)
         lang     (or (get ui-strings cfg-lang)
                      (:en ui-strings))
@@ -576,12 +578,13 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
   " (generate-header config) "
   " (generate-main lang) "
   " (generate-footer config lang) "
-  <script>" (generate-js topics-data lang) "</script>
+  <script>" (generate-js topics-data lang no-categories?) "</script>
 </body>
 </html>")))
 
 (defn generate-site [opts]
   (let [verbose       (:verbose opts)
+        no-categories (:no-categories opts)
         file-config   (when-let [config-path (:config opts)]
                         (let [result (load-config-file config-path verbose)]
                           (if (:error result)
@@ -591,7 +594,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
         file-config   (some-> file-config (select-keys config-keys))
         ;; Correct merge order: Defaults -> File Config -> CLI Arguments
         config        (merge defaults file-config (select-keys opts config-keys))
-        topics-result (load-topics-data (:topics opts) (:format config) verbose)]
+        topics-result (load-topics-data (:input-file opts) (:format config) verbose)]
     (when (:error topics-result)
       (println (:error topics-result))
       (System/exit 1))
@@ -603,7 +606,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
             (fs/copy css-file "custom.css" {:replace-existing true})
             (log verbose "Copied:" css-file "-> custom.css"))
           (log verbose "Skipping CSS copy: source matches destination or missing.")))
-      (spit "index.html" (generate-html config topics-data))
+      (spit "index.html" (generate-html config topics-data no-categories))
       (println "Generated: index.html"))))
 
 (defn show-help []
@@ -615,17 +618,17 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
 (defn -main [& args]
   (try
     (let [{:keys [args opts]} (cli/parse-args args {:spec cli-options})
-          ;; If -t/--topics not provided, use first positional arg
+          ;; If -i/--input-file not provided, use first positional arg
           opts (cond-> opts
-                 (and (not (:topics opts))
+                 (and (not (:input-file opts))
                       (seq args))
-                 (assoc :topics (first args)))]
+                 (assoc :input-file (first args)))]
       (when (:help opts) (show-help))
-      (when-not (:topics opts)
+      (when-not (:input-file opts)
         (println "Error: topics file or URL is required")
         (println "You can either pass it as:")
         (println "  - a positional argument: topics <file|url>")
-        (println "  - or with -t/--topics:   topics -t <file|url>")
+        (println "  - or with -i/--input-file:   topics -i <file|url>")
         (show-help))
       (generate-site opts))
     (catch Exception e
