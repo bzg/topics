@@ -1,0 +1,147 @@
+{
+  "type" : "document",
+  "title" : "Untitled Document",
+  "meta" : {
+    "_order" : [ ],
+    "_raw" : [ ]
+  },
+  "children" : [ {
+    "type" : "section",
+    "level" : 1,
+    "title" : "Un premier niveau",
+    "path" : [ "Un premier niveau" ],
+    "children" : [ {
+      "type" : "section",
+      "level" : 2,
+      "title" : "Catégorie A",
+      "path" : [ "Un premier niveau", "Catégorie A" ],
+      "children" : [ {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question A1",
+        "path" : [ "Un premier niveau", "Catégorie A", "Question A1" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question A2",
+        "path" : [ "Un premier niveau", "Catégorie A", "Question A2" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question A3",
+        "path" : [ "Un premier niveau", "Catégorie A", "Question A3" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question A4",
+        "path" : [ "Un premier niveau", "Catégorie A", "Question A4" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      } ]
+    }, {
+      "type" : "section",
+      "level" : 2,
+      "title" : "Catégorie B",
+      "path" : [ "Un premier niveau", "Catégorie B" ],
+      "children" : [ {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question B1",
+        "path" : [ "Un premier niveau", "Catégorie B", "Question B1" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question B2",
+        "path" : [ "Un premier niveau", "Catégorie B", "Question B2" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question B3",
+        "path" : [ "Un premier niveau", "Catégorie B", "Question B3" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question B4",
+        "path" : [ "Un premier niveau", "Catégorie B", "Question B4" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      } ]
+    } ]
+  }, {
+    "type" : "section",
+    "level" : 1,
+    "title" : "Un deuxième niveau",
+    "path" : [ "Un deuxième niveau" ],
+    "children" : [ {
+      "type" : "section",
+      "level" : 2,
+      "title" : "Catégorie C",
+      "path" : [ "Un deuxième niveau", "Catégorie C" ],
+      "children" : [ {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question C1",
+        "path" : [ "Un deuxième niveau", "Catégorie C", "Question C1" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question C2",
+        "path" : [ "Un deuxième niveau", "Catégorie C", "Question C2" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question C3",
+        "path" : [ "Un deuxième niveau", "Catégorie C", "Question C3" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      }, {
+        "type" : "section",
+        "level" : 3,
+        "title" : "Question C4",
+        "path" : [ "Un deuxième niveau", "Catégorie C", "Question C4" ],
+        "children" : [ {
+          "type" : "paragraph",
+          "content" : "Blabla"
+        } ]
+      } ]
+    } ]
+  } ]
+}
