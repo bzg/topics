@@ -1,0 +1,38 @@
+[
+  {
+    "title": "What is Topics?",
+    "content": "<p>Topics is a static site generator that creates searchable FAQ-style pages from JSON, EDN, or YAML data.</p>"
+  },
+  {
+    "title": "How do I install Topics?",
+    "content": "<p>Topics requires <a href=\"https://babashka.org\">Babashka</a>. Once installed, simply run:</p><pre><code>bb topics.clj your-data.json</code></pre>"
+  },
+  {
+    "title": "What input formats are supported?",
+    "content": "<p>Topics supports three input formats:</p><ul><li><strong>JSON</strong> - JavaScript Object Notation</li><li><strong>EDN</strong> - Extensible Data Notation (Clojure)</li><li><strong>YAML</strong> - YAML Ain't Markup Language</li></ul><p>The format is auto-detected from the file extension, or you can specify it with <code>-f</code>.</p>"
+  },
+  {
+    "title": "How do I customize the site title?",
+    "content": "<p>Use the <code>-T</code> or <code>--title</code> option:</p><pre><code>bb topics.clj -T \"My FAQ\" data.json</code></pre>"
+  },
+  {
+    "title": "Can I add custom CSS?",
+    "content": "<p>Yes! Use the <code>-C</code> option to include a custom CSS file:</p><pre><code>bb topics.clj -C custom.css data.json</code></pre><p>Your styles will override the default Pico CSS framework styles.</p>"
+  },
+  {
+    "title": "How do I use a configuration file?",
+    "content": "<p>Create an EDN file with your settings:</p><pre><code>{:title \"My Site\"\n :tagline \"Questions answered\"\n :lang \"fr\"}</code></pre><p>Then pass it with <code>-c</code>:</p><pre><code>bb topics.clj -c config.edn data.json</code></pre>"
+  },
+  {
+    "title": "Can I use Topics with org-parse?",
+    "content": "<p>Yes! Topics can directly consume an org-parse AST. Simply pass the JSON output from org-parse:</p><pre><code>org-parse notes.org -f json > ast.json\nbb topics.clj -l 2 ast.json</code></pre><p>The <code>-l</code> option controls the heading level for flattening sections.</p>"
+  },
+  {
+    "title": "How does search work?",
+    "content": "<p>Topics includes a client-side search that:</p><ul><li>Searches both titles and content</li><li>Normalizes accents (e.g., \"café\" matches \"cafe\")</li><li>Updates the URL for shareable search links</li><li>Works entirely offline after page load</li></ul>"
+  },
+  {
+    "title": "What languages are supported?",
+    "content": "<p>Currently Topics supports English (<code>en</code>) and French (<code>fr</code>) for UI strings. Set the language with:</p><pre><code>bb topics.clj -g fr data.json</code></pre>"
+  }
+]
