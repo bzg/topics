@@ -296,6 +296,9 @@
 details { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
 details summary { font-weight: 600; cursor: pointer; }
 details[open] summary { margin-bottom: .75rem; }
+.permalink { margin-left: .5rem; text-decoration: none; opacity: 0; transition: opacity .2s; font-size: .85em; }
+details summary:hover .permalink { opacity: .6; }
+.permalink:hover { opacity: 1 !important; }
 .hidden { display: none !important; }
 footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
 
@@ -328,6 +331,15 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
       .normalize('NFD')
       .replace(/[\\u0300-\\u036f]/g, '')
       .replace(/['’]/g, \"'\");
+  }
+
+  function slugify(text) {
+    return String(text || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\\u0300-\\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
   }
 
   function getCategories() {
@@ -385,8 +397,9 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
     }
     let html = showBackLink ? `<a href=\"#\" class=\"back-link\" id=\"back-to-categories\">${strings.allCategories}</a>` : '';
     topics.forEach(t => {
-      html += `<details>
-        <summary>${escapeHtml(t.title)}</summary>
+      const slug = slugify(t.title);
+      html += `<details id=\"${slug}\">
+        <summary>${escapeHtml(t.title)}<a href=\"#${slug}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
         <div>${t.content}</div>
       </details>`;
     });
@@ -396,9 +409,13 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
   function render() {
     let html;
     const categories = getCategories();
+    const hash = window.location.hash.slice(1);
 
     if (currentSearch) {
       html = renderTopicsList(searchTopics(currentSearch), false);
+    } else if (hash) {
+      // If there's a hash, show all topics to find the target
+      html = renderTopicsList(topicsData, false);
     } else if (currentCategory) {
       html = renderTopicsList(getTopicsByCategory(currentCategory), true);
     } else if (isSinglePseudoCategory(categories)) {
@@ -409,6 +426,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
     }
 
     contentDiv.innerHTML = html;
+    openAndScrollToHash();
 
     if (currentCategory && !currentSearch) {
       const backLink = document.getElementById('back-to-categories');
@@ -453,6 +471,16 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
     }
   }
 
+  function openAndScrollToHash() {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+    const el = document.getElementById(hash);
+    if (el && el.tagName === 'DETAILS') {
+      el.open = true;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
   let searchTimeout;
   searchInput.addEventListener('input', (e) => {
     clearTimeout(searchTimeout);
@@ -486,6 +514,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
   });
 
   window.addEventListener('popstate', () => { parseUrl(); render(); });
+  window.addEventListener('hashchange', openAndScrollToHash);
   parseUrl();
   render();
 })();")))
