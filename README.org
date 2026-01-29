@@ -12,11 +12,19 @@ Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 bbin install io.github.bzg/topics
 #+end_src
 
-then run =topics= with
+Now suppose you have an =input.json= file structured like this:
 
-#+begin_src sh
-topics # Then check http://localhost:8080
+#+begin_src json
+[
+  {
+    "title": "Topic title",
+    "content": "<p>HTML</p>",
+    "category": "Category name"
+  }
+]
 #+end_src
+
+Running =~ topics input.json= will output an =index.html file.
 
 * Feedback
 

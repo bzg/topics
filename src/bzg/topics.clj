@@ -18,12 +18,26 @@
 ;;   {
 ;;     "title": "Topic title",
 ;;     "content": "<p>HTML</p>",
-;;     "path": [
-;;       "Section",
-;;       "Category"
-;;     ]
+;;     "category": "Category name"
 ;;   }
 ;; ]
+;;
+;; Configuration file (EDN format, use with -c option):
+;;
+;; {:title   "My FAQ"
+;;  :tagline "Frequently asked questions"
+;;  :footer  "<a href=\"https://example.com\">My site</a>"
+;;  :source  "https://example.com/data/faq.json"
+;;  :lang    "fr"
+;;  :css     "custom.css"}
+;;
+;; Configuration keys:
+;;   :title   - Website title (default: "Topics")
+;;   :tagline - Website tagline (default: "Topics to explore")
+;;   :footer  - Footer HTML
+;;   :source  - URL displayed as content source
+;;   :lang    - Language: "en" or "fr" (default: "en")
+;;   :css     - Custom CSS file to include
 
 (ns bzg.topics
   (:require [cheshire.core :as json]
@@ -79,9 +93,9 @@
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
-;; Keep only maps with :path and :title
+;; Keep only maps with :title and :category
 (defn valid-topics [topics-data]
-  (filter #(and (map? %) (:path %) (:title %)) topics-data))
+  (filter #(and (map? %) (:title %) (contains? % :category)) topics-data))
 
 (defn detect-format [source format-option]
   (if (= format-option "auto")
@@ -97,6 +111,9 @@
 
 (defn http-url? [s]
   (boolean (re-find #"^https?://" s)))
+
+;; Forward declarations for AST handling functions (defined later)
+(declare ast? flatten-ast-to-topics find-max-level)
 
 (defn load-topics-data [source format-option verbose]
   (try
@@ -115,17 +132,24 @@
           parsed  (case format
                     :edn  (edn/read-string content)
                     :yaml (yaml/parse-string content)
-                    (json/parse-string content true))
-          ;; Normalize parsed data into a sequential collection
-          data    (cond
-                    (sequential? parsed) parsed
-                    (map? parsed)        [parsed]
-                    :else (throw (ex-info "Topics data must be a list or map at the top level"
-                                          {:parsed-type (type parsed)})))
-          valid   (valid-topics data)]
-      (log verbose "Loaded" (count valid) "topics (filtered"
-           (- (count data) (count valid)) "category headers or invalid entries)")
-      {:ok valid})
+                    (json/parse-string content true))]
+      ;; Check if parsed data is an org-parse AST
+      (if (ast? parsed)
+        (let [max-level (find-max-level parsed)
+              _         (log verbose "Detected org-parse AST, auto-detected max level:" max-level)
+              flattened (flatten-ast-to-topics parsed max-level)]
+          (log verbose "Flattened AST into" (count flattened) "topics")
+          {:ok flattened})
+        ;; Regular topics data
+        (let [data  (cond
+                      (sequential? parsed) parsed
+                      (map? parsed)        [parsed]
+                      :else (throw (ex-info "Topics data must be a list or map at the top level"
+                                            {:parsed-type (type parsed)})))
+              valid (valid-topics data)]
+          (log verbose "Loaded" (count valid) "topics (filtered"
+               (- (count data) (count valid)) "category headers or invalid entries)")
+          {:ok valid})))
     (catch Exception e
       {:error (str "Error loading Topics data from " source ": " (.getMessage e))})))
 
@@ -139,33 +163,116 @@
       {:error (str "Failed to load configuration file " config-path ": " (.getMessage e))})))
 
 ;; Normalize topics into a common structure with optional categories.
-;;
-;; If *no* entry has path length > 1:
-;;   - treat everything as a flat list (no categories)
-;;   - category is always nil
-;;
-;; If *any* entry has path length > 1:
-;;   - use first element of path as :category
-;;   - treat every such entry as a topic
-;;   - entries with shorter paths are ignored (considered headers)
 (defn categorize-topics [topics-data]
-  (let [valid      (valid-topics topics-data)
-        has-nested? (some #(> (count (:path %)) 1) valid)]
-    (if has-nested? ;; nested mode: only level-2+ are topics
-      (->> valid
-           (filter #(> (count (:path %)) 1))
-           (map (fn [{:keys [title content path]}]
-                  {:title    (or title "")
-                   ;; NOTE: :content is HTML injected directly into the page.
-                   ;; Only use trusted sources or sanitize upstream.
-                   :content  (str (or content ""))
-                   :category (first path)})))
-      ;; Flat mode: ignore categories
-      (->> valid
-           (map (fn [{:keys [title content]}]
-                  {:title    (or title "")
-                   :content  (str (or content ""))
-                   :category nil}))))))
+  (->> (valid-topics topics-data)
+       (map (fn [{:keys [title content category]}]
+              {:title    (or title "")
+               :content  (str (or content ""))
+               :category category}))))
+
+;; AST Flattening (for org-parse AST input)
+;;
+;; These functions transform an org-parse AST into the topics format:
+;; [{:title "..." :content "..." :category "..."} ...]
+
+(declare render-node-for-topics)
+
+(defn section? [node] (= (:type node) "section"))
+
+(defn render-node-for-topics
+  "Render an AST node to HTML for topics content."
+  [node]
+  (case (:type node)
+    "paragraph" (str "<p>" (:content node) "</p>")
+    "list" (let [tag (if (:ordered node) "ol" "ul")]
+            (str "<" tag ">"
+                 (str/join "" (map render-node-for-topics (:items node)))
+                 "</" tag ">"))
+    "list-item" (str "<li>" (:content node)
+                    (when (seq (:children node))
+                      (str/join "" (map render-node-for-topics (:children node))))
+                    "</li>")
+    "table" (let [rows (:rows node)
+                 has-header (:has-header node)]
+             (if (empty? rows) ""
+                 (str "<table>"
+                      (when has-header
+                        (str "<thead><tr>"
+                             (str/join "" (map #(str "<th>" % "</th>") (first rows)))
+                             "</tr></thead>"))
+                      "<tbody>"
+                      (str/join ""
+                                (map (fn [row]
+                                       (str "<tr>"
+                                            (str/join "" (map #(str "<td>" % "</td>") row))
+                                            "</tr>"))
+                                     (if has-header (rest rows) rows)))
+                      "</tbody></table>")))
+    "src-block" (str "<pre><code>" (:content node) "</code></pre>")
+    "quote-block" (str "<blockquote><p>" (str/replace (:content node) #"\n\n+" "</p><p>") "</p></blockquote>")
+    "fixed-width" (str "<pre>" (:content node) "</pre>")
+    "footnote-def" (str "<div class=\"footnote\"><sup>" (:label node) "</sup> " (:content node) "</div>")
+    "section" (str "<section><h" (min (:level node) 6) ">" (:title node) "</h" (min (:level node) 6) ">"
+                  (str/join "" (map render-node-for-topics (:children node)))
+                  "</section>")
+    "block" (str "<div class=\"block\">" (:content node) "</div>")
+    "comment" ""
+    "property-drawer" ""
+    ""))
+
+(defn render-section-content-up-to-level
+  "Render the children of a section as HTML, excluding subsections at or above target-level."
+  [section target-level]
+  (->> (:children section)
+       (filter #(or (not (section? %))
+                    (> (:level %) target-level)))
+       (map render-node-for-topics)
+       (str/join "")))
+
+(defn flatten-ast-to-topics
+  "Flatten an org-parse AST to extract sections at exactly the target level.
+   Returns a vector of maps with :title, :content (HTML), and :category.
+   The :category is the penultimate element of the path (parent section title).
+   This is compatible with the topics data format."
+  [ast target-level]
+  (letfn [(collect-sections [node current-path]
+            (case (:type node)
+              "document"
+              (mapcat #(collect-sections % current-path) (:children node))
+
+              "section"
+              (let [new-path (conj current-path (:title node))]
+                (if (= (:level node) target-level)
+                  ;; At target level: emit this section with category = penultimate path element
+                  (let [content (render-section-content-up-to-level node target-level)
+                        ;; Get penultimate element (parent category)
+                        category (when (>= (count new-path) 2)
+                                   (nth new-path (- (count new-path) 2)))]
+                    [{:title (:title node)
+                      :content content
+                      :category category}])
+                  ;; Not at target level: recurse into children
+                  (if (< (:level node) target-level)
+                    (mapcat #(collect-sections % new-path) (filter section? (:children node)))
+                    ;; Beyond target level: ignore
+                    [])))
+
+              []))]
+    (vec (collect-sections ast []))))
+
+(defn ast?
+  "Check if data looks like an org-parse AST (has :type 'document')."
+  [data]
+  (and (map? data) (= (:type data) "document")))
+
+(defn find-max-level
+  "Find the maximum section level in an AST."
+  [ast]
+  (letfn [(max-level [node]
+            (let [current (if (= (:type node) "section") (:level node) 0)
+                  children-max (reduce max 0 (map max-level (:children node)))]
+              (max current children-max)))]
+    (max-level ast)))
 
 (defn topics-to-js-array [topics-data]
   (-> topics-data
@@ -455,7 +562,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
         file-config   (some-> file-config (select-keys config-keys))
         ;; Correct merge order: Defaults -> File Config -> CLI Arguments
         config        (merge defaults file-config (select-keys opts config-keys))
-        topics-result (load-topics-data (:topics opts) (:format opts) verbose)]
+        topics-result (load-topics-data (:topics opts) (:format config) verbose)]
     (when (:error topics-result)
       (println (:error topics-result))
       (System/exit 1))
