@@ -289,7 +289,6 @@ details summary:hover .permalink { opacity: .6; }
 .permalink:hover { opacity: 1 !important; }
 .hidden { display: none !important; }
 footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
-.js-only { display: none; }
 .noscript-content .category-section { margin-bottom: 2rem; }
 .noscript-content .category-section h2 { border-bottom: 1px solid var(--pico-muted-border-color); padding-bottom: .5rem; margin-bottom: 1rem; }
 .noscript-content article { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
@@ -300,18 +299,28 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                       {:noSearchResults   (:no-search-results lang)
                        :noCategoryResults (:no-category-results lang)
                        :topicsCount       (:topics-count lang)
-                       :allCategories     (:all-categories lang)})]
+                       :allCategories     (:all-categories lang)
+                       :searchPlaceholder (:search-placeholder lang)
+                       :clearSearch       (:clear-search lang)})]
     (str "(function() {
   'use strict';
-  document.querySelector('.js-only').style.display = 'flex';
   const topicsData = " (topics-to-js-array topics-data no-categories?) ";
   const strings = " strings-json ";
   let currentCategory = null;
   let currentSearch = '';
   const contentDiv = document.getElementById('topics-content');
+  const homeLink = document.getElementById('home-link');
+
+  // Create search row dynamically (won't exist for non-JS browsers)
+  const searchRow = document.createElement('div');
+  searchRow.className = 'search-row';
+  searchRow.setAttribute('role', 'search');
+  searchRow.innerHTML = '<input placeholder=\"' + strings.searchPlaceholder + '\" type=\"search\" id=\"search-input\" name=\"q\">' +
+    '<button type=\"button\" class=\"secondary outline hidden\" id=\"clear-search\" aria-label=\"' + strings.clearSearch + '\">✕</button>';
+  contentDiv.parentNode.insertBefore(searchRow, contentDiv);
+
   const searchInput = document.getElementById('search-input');
   const clearButton = document.getElementById('clear-search');
-  const homeLink = document.getElementById('home-link');
 
   function escapeHtml(text) {
     const div = document.createElement('div');
@@ -582,10 +591,6 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 (defn generate-main [lang topics-data no-categories?]
   (str "<main class=\"container\" id=\"main-content\" tabindex=\"-1\">
     " (generate-noscript-content topics-data no-categories? lang) "
-    <div class=\"search-row js-only\" role=\"search\">
-      <input placeholder=\"" (:search-placeholder lang) "\" type=\"search\" id=\"search-input\" name=\"q\">
-      <button type=\"button\" class=\"secondary outline hidden\" id=\"clear-search\" aria-label=\"" (:clear-search lang) "\">✕</button>
-    </div>
     <div id=\"topics-content\" aria-live=\"polite\"></div>
   </main>"))
 
