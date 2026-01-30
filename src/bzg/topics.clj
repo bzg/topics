@@ -90,13 +90,13 @@
       (re-find #"(?i)\.(yaml|yml)$" source) :yaml
       :else                                 :json)
     (let [fmt (keyword format-option)]
-      (if (#{:edn :yaml :json} fmt)
-        fmt
-        (throw (ex-info (str "Unsupported format: " format-option)
-                        {:format format-option}))))))
+      (or (#{:edn :yaml :json} fmt)
+          (throw (ex-info (str "Unsupported format: " format-option)
+                          {:format format-option}))))))
 
 (defn http-url? [s]
-  (boolean (re-find #"^https?://" s)))
+  (or (str/starts-with? s "http://")
+      (str/starts-with? s "https://")))
 
 ;; Forward declarations for AST handling functions (defined later)
 (declare ast? flatten-ast-to-topics find-max-level)
@@ -153,7 +153,7 @@
   (->> topics-data
        (map (fn [{:keys [title content category]}]
               {:title    (or title "")
-               :content  (str (or content ""))
+               :content  (or content "")
                :category (when-not no-categories? category)}))))
 
 ;; AST Flattening (for org-parse AST input)
@@ -600,27 +600,20 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
 (defn -main [& args]
   (try
     (let [{:keys [args opts]} (cli/parse-args args {:spec cli-options})
-          ;; If -i/--input-file not provided, use first positional arg
+          ;; Auto-detect input file, config, and CSS
           opts (cond-> opts
-                 (and (not (:input-file opts))
-                      (seq args))
-                 (assoc :input-file (first args)))
-          ;; Auto-detect config.edn if not specified and file exists
-          opts (cond-> opts
-                 (and (not (:config opts))
-                      (fs/exists? "config.edn"))
-                 (assoc :config "config.edn"))
-          ;; Auto-detect custom.css if not specified and file exists
-          opts (cond-> opts
-                 (and (not (:css opts))
-                      (fs/exists? "custom.css"))
+                 (and (not (:input-file opts)) (seq args))
+                 (assoc :input-file (first args))
+                 (and (not (:config opts)) (fs/exists? "config.edn"))
+                 (assoc :config "config.edn")
+                 (and (not (:css opts)) (fs/exists? "custom.css"))
                  (assoc :css "custom.css"))]
       (when (:help opts) (show-help))
       (when (:verbose opts)
-        (when (and (not (some #(or (= % "-c") (= % "--config")) args))
+        (when (and (not (some #{"-c" "--config"} args))
                    (:config opts))
           (println "Auto-detected config file: config.edn"))
-        (when (and (not (some #(or (= % "-C") (= % "--css")) args))
+        (when (and (not (some #{"-C" "--css"} args))
                    (:css opts))
           (println "Auto-detected CSS file: custom.css")))
       (when-not (:input-file opts)
