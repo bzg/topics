@@ -288,7 +288,12 @@ details[open] summary { margin-bottom: .75rem; }
 details summary:hover .permalink { opacity: .6; }
 .permalink:hover { opacity: 1 !important; }
 .hidden { display: none !important; }
-footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
+footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
+.js-only { display: none; }
+.noscript-content .category-section { margin-bottom: 2rem; }
+.noscript-content .category-section h2 { border-bottom: 1px solid var(--pico-muted-border-color); padding-bottom: .5rem; margin-bottom: 1rem; }
+.noscript-content article { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
+.noscript-content article h3 { margin-top: 0; margin-bottom: .75rem; }")
 
 (defn generate-js [topics-data lang no-categories?]
   (let [strings-json (json/generate-string
@@ -298,6 +303,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
                        :allCategories     (:all-categories lang)})]
     (str "(function() {
   'use strict';
+  document.querySelector('.js-only').style.display = 'flex';
   const topicsData = " (topics-to-js-array topics-data no-categories?) ";
   const strings = " strings-json ";
   let currentCategory = null;
@@ -511,6 +517,14 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
       (str/replace "\"" "&quot;")
       (str/replace "'" "&#39;")))
 
+(defn slugify [text]
+  (-> (or text "")
+      str/lower-case
+      (java.text.Normalizer/normalize java.text.Normalizer$Form/NFD)
+      (str/replace #"[\u0300-\u036f]" "")
+      (str/replace #"[^a-z0-9]+" "-")
+      (str/replace #"^-|-$" "")))
+
 (defn generate-head [config css-file]
   (str "<head>
   <meta charset=\"utf-8\">
@@ -528,9 +542,47 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
     <p>" (html-escape (:tagline config)) "</p>
   </header>"))
 
-(defn generate-main [lang]
+(defn generate-noscript-content
+  "Generate static HTML content for browsers without JavaScript.
+   Shows all topics as sections, grouped by category if categories exist."
+  [topics-data no-categories? lang]
+  (let [topics    (categorize-topics topics-data no-categories?)
+        by-cat    (group-by :category topics)
+        cats      (sort (keys by-cat))
+        all-cat   (:all-categories lang)
+        ;; Check if we have real categories or just nil/empty
+        has-cats? (some #(and % (not= % "")) cats)]
+    (str "<noscript><div class=\"noscript-content\">"
+         (if (and has-cats? (not no-categories?))
+           ;; With categories: group topics under category headings
+           (str/join "\n"
+                     (for [cat cats
+                           :let [cat-name (if (or (nil? cat) (= cat "")) all-cat cat)
+                                 cat-topics (get by-cat cat)]]
+                       (str "<section class=\"category-section\">"
+                            "<h2>" (html-escape cat-name) "</h2>"
+                            (str/join "\n"
+                                      (for [{:keys [title content]} cat-topics
+                                            :let [slug (slugify title)]]
+                                        (str "<article id=\"noscript-" slug "\">"
+                                             "<h3>" (html-escape title) "</h3>"
+                                             "<div>" content "</div>"
+                                             "</article>")))
+                            "</section>")))
+           ;; Without categories: flat list of all topics
+           (str/join "\n"
+                     (for [{:keys [title content]} topics
+                           :let [slug (slugify title)]]
+                       (str "<article id=\"noscript-" slug "\">"
+                            "<h3>" (html-escape title) "</h3>"
+                            "<div>" content "</div>"
+                            "</article>"))))
+         "</div></noscript>")))
+
+(defn generate-main [lang topics-data no-categories?]
   (str "<main class=\"container\" id=\"main-content\" tabindex=\"-1\">
-    <div class=\"search-row\" role=\"search\">
+    " (generate-noscript-content topics-data no-categories? lang) "
+    <div class=\"search-row js-only\" role=\"search\">
       <input placeholder=\"" (:search-placeholder lang) "\" type=\"search\" id=\"search-input\" name=\"q\">
       <button type=\"button\" class=\"secondary outline hidden\" id=\"clear-search\" aria-label=\"" (:clear-search lang) "\">✕</button>
     </div>
@@ -558,7 +610,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
 <body>
   <a href=\"#main-content\" class=\"skip-link\">" (:skip-to-content lang) "</a>
   " (generate-header config) "
-  " (generate-main lang) "
+  " (generate-main lang topics-data no-categories?) "
   " (generate-footer config lang) "
   <script>" (generate-js topics-data lang no-categories?) "</script>
 </body>
