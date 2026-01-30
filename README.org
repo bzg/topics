@@ -1,10 +1,10 @@
 #+title: Topics
 
-Web application to expose topics.
+Topics generates a static HTML/CSS/JS site from topics data.
 
 #+html: <img src="topics.webp" />
 
-* Install and run
+* Install
 
 Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 
@@ -12,7 +12,9 @@ Assuming [[https://github.com/babashka/bbin][bbin]] is installed:
 bbin install io.github.bzg/topics
 #+end_src
 
-Now suppose you have an =input.json= file structured like this:
+* Run
+
+Suppose you have an =input.json= file structured like this:
 
 #+begin_src json
 [
@@ -24,7 +26,45 @@ Now suppose you have an =input.json= file structured like this:
 ]
 #+end_src
 
-Running =~ topics input.json= will output an =index.html file.
+To output an =index.html= file:
+
+#+begin_src sh
+topics input.json
+#+end_src
+
+* Customize
+
+You can add configuration in a =config.edn= file:
+
+#+begin_src clojure
+ {:title   "My FAQ"
+  :tagline "Frequently asked questions"
+  :footer  "<a href=\"https://example.com\">My site</a>"
+  :source  "https://example.com/data/faq.json"
+  :lang    "fr"
+  :css     "custom.css"}
+#+end_src
+
+Here are the configuration keys:
+
+: :title   - Website title (default: "Topics")
+: :tagline - Website tagline (default: "Topics to explore")
+: :footer  - Footer HTML
+: :source  - URL displayed as content source
+: :lang    - Language: "en" or "fr" (default: "en")
+: :css     - Custom CSS file to include
+
+Use =$ topics -c my_config.edn input.json= to use another file name than
+=config.edn=.
+
+The =index.html= output can link to a custom CSS file.
+
+By default, =topics= links to a =custom.css= file, if it exists in the
+local directory, but you can use other file like this:
+
+#+begin_src sh
+$ topics -C my_custom.css input.json
+#+end_src
 
 * Feedback
 
