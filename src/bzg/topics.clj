@@ -166,7 +166,7 @@
 
 ;; Normalize topics into a common structure with optional categories.
 (defn categorize-topics [topics-data no-categories?]
-  (->> (valid-topics topics-data)
+  (->> topics-data
        (map (fn [{:keys [title content category]}]
               {:title    (or title "")
                :content  (str (or content ""))
@@ -176,8 +176,6 @@
 ;;
 ;; These functions transform an org-parse AST into the topics format:
 ;; [{:title "..." :content "..." :category "..."} ...]
-
-(declare render-node-for-topics)
 
 (defn section? [node] (= (:type node) "section"))
 
@@ -214,9 +212,10 @@
     "quote-block" (str "<blockquote><p>" (str/replace (:content node) #"\n\n+" "</p><p>") "</p></blockquote>")
     "fixed-width" (str "<pre>" (:content node) "</pre>")
     "footnote-def" (str "<div class=\"footnote\"><sup>" (:label node) "</sup> " (:content node) "</div>")
-    "section" (str "<section><h" (min (:level node) 6) ">" (:title node) "</h" (min (:level node) 6) ">"
-                  (str/join "" (map render-node-for-topics (:children node)))
-                  "</section>")
+    "section" (let [h (min (:level node) 6)]
+                (str "<section><h" h ">" (:title node) "</h" h ">"
+                     (str/join "" (map render-node-for-topics (:children node)))
+                     "</section>"))
     "block" (str "<div class=\"block\">" (:content node) "</div>")
     "comment" ""
     "property-drawer" ""
@@ -246,10 +245,8 @@
               (let [new-path (conj current-path (:title node))]
                 (if (= (:level node) target-level)
                   ;; At target level: emit this section with category = penultimate path element
-                  (let [content (render-section-content-up-to-level node target-level)
-                        ;; Get penultimate element (parent category)
-                        category (when (>= (count new-path) 2)
-                                   (nth new-path (- (count new-path) 2)))]
+                  (let [content  (render-section-content-up-to-level node target-level)
+                        category (-> new-path butlast last)]
                     [{:title (:title node)
                       :content content
                       :category category}])
