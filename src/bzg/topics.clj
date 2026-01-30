@@ -23,22 +23,6 @@
 ;;   }
 ;; ]
 ;;
-;; Configuration file (EDN format, use with -c option):
-;;
-;; {:title   "My FAQ"
-;;  :tagline "Frequently asked questions"
-;;  :footer  "<a href=\"https://example.com\">My site</a>"
-;;  :source  "https://example.com/data/faq.json"
-;;  :lang    "fr"
-;;  :css     "custom.css"}
-;;
-;; Configuration keys:
-;;   :title   - Website title (default: "Topics")
-;;   :tagline - Website tagline (default: "Topics to explore")
-;;   :footer  - Footer HTML
-;;   :source  - URL displayed as content source
-;;   :lang    - Language: "en" or "fr" (default: "en")
-;;   :css     - Custom CSS file to include
 
 (ns bzg.topics
   (:require [cheshire.core :as json]
@@ -603,7 +587,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
       (println "Generated: index.html"))))
 
 (defn show-help []
-  (println "Usage: topics [options] <file|url>")
+  (println "Usage: topics [options] -i <file|url>")
   (println "\nGenerates a static HTML/CSS/JS site from topics data.\n\nOptions:")
   (println (cli/format-opts {:spec cli-options}))
   (System/exit 0))
@@ -615,13 +599,27 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
           opts (cond-> opts
                  (and (not (:input-file opts))
                       (seq args))
-                 (assoc :input-file (first args)))]
+                 (assoc :input-file (first args)))
+          ;; Auto-detect config.edn if not specified and file exists
+          opts (cond-> opts
+                 (and (not (:config opts))
+                      (fs/exists? "config.edn"))
+                 (assoc :config "config.edn"))
+          ;; Auto-detect custom.css if not specified and file exists
+          opts (cond-> opts
+                 (and (not (:css opts))
+                      (fs/exists? "custom.css"))
+                 (assoc :css "custom.css"))]
       (when (:help opts) (show-help))
+      (when (:verbose opts)
+        (when (and (not (some #(or (= % "-c") (= % "--config")) args))
+                   (:config opts))
+          (println "Auto-detected config file: config.edn"))
+        (when (and (not (some #(or (= % "-C") (= % "--css")) args))
+                   (:css opts))
+          (println "Auto-detected CSS file: custom.css")))
       (when-not (:input-file opts)
-        (println "Error: topics file or URL is required")
-        (println "You can either pass it as:")
-        (println "  - a positional argument: topics <file|url>")
-        (println "  - or with -i/--input-file:   topics -i <file|url>")
+        (println "Error: topics file or URL is required\n")
         (show-help))
       (generate-site opts))
     (catch Exception e
