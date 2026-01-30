@@ -408,13 +408,9 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }")
   function render() {
     let html;
     const categories = getCategories();
-    const hash = window.location.hash.slice(1);
 
     if (currentSearch) {
       html = renderTopicsList(searchTopics(currentSearch), false);
-    } else if (hash) {
-      // If there's a hash, show all topics to find the target
-      html = renderTopicsList(topicsData, false);
     } else if (currentCategory) {
       html = renderTopicsList(getTopicsByCategory(currentCategory), true);
     } else if (isSinglePseudoCategory(categories)) {
