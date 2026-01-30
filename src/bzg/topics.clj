@@ -200,7 +200,12 @@
                 (str "<section><h" h ">" (:title node) "</h" h ">"
                      (str/join "" (map render-node-for-topics (:children node)))
                      "</section>"))
-    "block" (str "<div class=\"block\">" (:content node) "</div>")
+    "block" (if (and (= (:block-type node) "export")
+                     (= (:args node) "html"))
+              (:content node)
+              "") ;; Ignore non-html export blocks and other blocks
+    "html-line" (str "<p>" (:content node) "</p>")
+    "latex-line" "" ;; Ignore latex lines
     "comment" ""
     "property-drawer" ""
     ""))
