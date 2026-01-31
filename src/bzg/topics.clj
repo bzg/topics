@@ -610,7 +610,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                    (println "Warning: unsupported lang" (:lang config) "- defaulting to en"))
         css-file (:css config)]
     (str "<!DOCTYPE html>
-<html lang=\"" (html-escape (:lang lang)) "\" data-theme=\"light\">
+<html lang=\"" (html-escape (:lang lang)) "\">
 " (generate-head config css-file) "
 <body>
   <a href=\"#main-content\" class=\"skip-link\">" (:skip-to-content lang) "</a>
