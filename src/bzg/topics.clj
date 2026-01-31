@@ -64,6 +64,8 @@
         :content-source      "Source des contenus"
         :skip-to-content     "Passer au contenu"
         :all-categories      "Toutes les catégories"
+        :view-all-flat       "Voir la liste complète"
+        :view-by-category    "Voir par catégorie"
         :lang                "fr"}
    :en {:search-placeholder  "Search"
         :clear-search        "Clear search"
@@ -73,6 +75,8 @@
         :content-source      "Content source"
         :skip-to-content     "Skip to content"
         :all-categories      "All categories"
+        :view-all-flat       "View full list"
+        :view-by-category    "View by category"
         :lang                "en"}})
 
 (def config-keys [:title :tagline :footer :source :lang :css :verbose])
@@ -151,10 +155,11 @@
 ;; Normalize topics into a common structure with optional categories.
 (defn categorize-topics [topics-data no-categories?]
   (->> topics-data
-       (map (fn [{:keys [title content category]}]
-              {:title    (or title "")
-               :content  (or content "")
-               :category (when-not no-categories? category)}))))
+       (map (fn [{:keys [title content category custom_id]}]
+              (cond-> {:title    (or title "")
+                       :content  (or content "")
+                       :category (when-not no-categories? category)}
+                custom_id (assoc :custom_id custom_id))))))
 
 ;; AST Flattening (for org-parse AST input)
 ;;
@@ -300,6 +305,8 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                        :noCategoryResults (:no-category-results lang)
                        :topicsCount       (:topics-count lang)
                        :allCategories     (:all-categories lang)
+                       :viewAllFlat       (:view-all-flat lang)
+                       :viewByCategory    (:view-by-category lang)
                        :searchPlaceholder (:search-placeholder lang)
                        :clearSearch       (:clear-search lang)})]
     (str "(function() {
@@ -308,6 +315,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
   const strings = " strings-json ";
   let currentCategory = null;
   let currentSearch = '';
+  let viewMode = 'categories'; // 'categories' or 'flat'
   const contentDiv = document.getElementById('topics-content');
   const homeLink = document.getElementById('home-link');
 
@@ -345,6 +353,16 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
       .replace(/^-|-$/g, '');
   }
 
+  function getTopicId(topic) {
+    if (topic.custom_id) {
+      // Sanitize custom_id: replace special chars and spaces with dashes
+      return String(topic.custom_id)
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/^-|-$/g, '');
+    }
+    return slugify(topic.title);
+  }
+
   function getCategories() {
     const cats = {};
     topicsData.forEach(t => {
@@ -358,6 +376,11 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 
   function isSinglePseudoCategory(categories) {
     return categories.length === 1 && categories[0].name === strings.allCategories;
+  }
+
+  function hasRealCategories() {
+    const categories = getCategories();
+    return !isSinglePseudoCategory(categories);
   }
 
   function searchTopics(query) {
@@ -383,7 +406,8 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 
   function renderCategoriesGrid() {
     const categories = getCategories();
-    let html = '<nav class=\"grid\">';
+    let html = '<div class=\"view-toggle\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewAllFlat + '</a></div>';
+    html += '<nav class=\"grid\">';
     categories.forEach(cat => {
       html += `<a href=\"#\" class=\"card\" data-category=\"${escapeHtml(cat.name)}\">
         <h3>${escapeHtml(cat.name)}</h3>
@@ -393,6 +417,18 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     return html + '</nav>';
   }
 
+  function renderFlatList() {
+    let html = '<div class=\"view-toggle\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewByCategory + '</a></div>';
+    topicsData.forEach(t => {
+      const id = getTopicId(t);
+      html += `<details id=\"${id}\">
+        <summary>${escapeHtml(t.title)}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
+        <div>${t.content}</div>
+      </details>`;
+    });
+    return html;
+  }
+
   function renderTopicsList(topics, showBackLink = false) {
     if (topics.length === 0) {
       const msg = currentSearch ? strings.noSearchResults : strings.noCategoryResults;
@@ -400,9 +436,9 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     }
     let html = showBackLink ? `<a href=\"#\" class=\"back-link\" id=\"back-to-categories\">${strings.allCategories}</a>` : '';
     topics.forEach(t => {
-      const slug = slugify(t.title);
-      html += `<details id=\"${slug}\">
-        <summary>${escapeHtml(t.title)}<a href=\"#${slug}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
+      const id = getTopicId(t);
+      html += `<details id=\"${id}\">
+        <summary>${escapeHtml(t.title)}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
         <div>${t.content}</div>
       </details>`;
     });
@@ -420,12 +456,24 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     } else if (isSinglePseudoCategory(categories)) {
       // Only one pseudo-category (flat data): show all topics directly
       html = renderTopicsList(topicsData, false);
+    } else if (viewMode === 'flat') {
+      html = renderFlatList();
     } else {
       html = renderCategoriesGrid();
     }
 
     contentDiv.innerHTML = html;
     openAndScrollToHash();
+
+    // Handle view toggle click
+    const toggleLink = document.getElementById('toggle-view');
+    if (toggleLink) {
+      toggleLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        viewMode = viewMode === 'categories' ? 'flat' : 'categories';
+        render();
+      });
+    }
 
     if (currentCategory && !currentSearch) {
       const backLink = document.getElementById('back-to-categories');
@@ -534,6 +582,15 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
       (str/replace #"[^a-z0-9]+" "-")
       (str/replace #"^-|-$" "")))
 
+(defn get-topic-id
+  "Return custom_id (sanitized) if present, otherwise slugify the title."
+  [{:keys [title custom_id]}]
+  (if custom_id
+    (-> (str custom_id)
+        (str/replace #"[^a-zA-Z0-9_-]+" "-")
+        (str/replace #"^-|-$" ""))
+    (slugify title)))
+
 (defn generate-head [config css-file]
   (str "<head>
   <meta charset=\"utf-8\">
@@ -571,20 +628,20 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                        (str "<section class=\"category-section\">"
                             "<h2>" (html-escape cat-name) "</h2>"
                             (str/join "\n"
-                                      (for [{:keys [title content]} cat-topics
-                                            :let [slug (slugify title)]]
-                                        (str "<article id=\"noscript-" slug "\">"
-                                             "<h3>" (html-escape title) "</h3>"
-                                             "<div>" content "</div>"
+                                      (for [topic cat-topics
+                                            :let [id (get-topic-id topic)]]
+                                        (str "<article id=\"noscript-" id "\">"
+                                             "<h3>" (html-escape (:title topic)) "</h3>"
+                                             "<div>" (:content topic) "</div>"
                                              "</article>")))
                             "</section>")))
            ;; Without categories: flat list of all topics
            (str/join "\n"
-                     (for [{:keys [title content]} topics
-                           :let [slug (slugify title)]]
-                       (str "<article id=\"noscript-" slug "\">"
-                            "<h3>" (html-escape title) "</h3>"
-                            "<div>" content "</div>"
+                     (for [topic topics
+                           :let [id (get-topic-id topic)]]
+                       (str "<article id=\"noscript-" id "\">"
+                            "<h3>" (html-escape (:title topic)) "</h3>"
+                            "<div>" (:content topic) "</div>"
                             "</article>"))))
          "</div></noscript>")))
 
