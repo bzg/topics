@@ -224,10 +224,21 @@
        (map render-node-for-topics)
        (str/join "")))
 
+(defn get-property
+  "Extract a property value from an org-parse section's properties list.
+   Properties are stored as [[key value] [key value] ...]."
+  [node prop-name]
+  (when-let [props (:properties node)]
+    (->> props
+         (filter #(= (first %) prop-name))
+         first
+         second)))
+
 (defn flatten-ast-to-topics
   "Flatten an org-parse AST to extract sections at exactly the target level.
-   Returns a vector of maps with :title, :content (HTML), and :category.
+   Returns a vector of maps with :title, :content (HTML), :category, and optionally :custom_id.
    The :category is the penultimate element of the path (parent section title).
+   The :custom_id is extracted from the section's properties if present.
    This is compatible with the topics data format."
   [ast target-level]
   (letfn [(collect-sections [node current-path]
@@ -239,11 +250,13 @@
               (let [new-path (conj current-path (:title node))]
                 (if (= (:level node) target-level)
                   ;; At target level: emit this section with category = penultimate path element
-                  (let [content  (render-section-content-up-to-level node target-level)
-                        category (-> new-path butlast last)]
-                    [{:title (:title node)
-                      :content content
-                      :category category}])
+                  (let [content   (render-section-content-up-to-level node target-level)
+                        category  (-> new-path butlast last)
+                        custom-id (get-property node "custom_id")]
+                    [(cond-> {:title    (:title node)
+                              :content  content
+                              :category category}
+                       custom-id (assoc :custom_id custom-id))])
                   ;; Not at target level: recurse into children
                   (if (< (:level node) target-level)
                     (mapcat #(collect-sections % new-path) (filter section? (:children node)))
