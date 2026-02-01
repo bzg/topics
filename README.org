@@ -41,7 +41,6 @@ You can add configuration in a =config.edn= file:
   :tagline "Frequently asked questions"
   :footer  "<a href=\"https://example.com\">My site</a>"
   :source  "https://example.com/data/faq.json"
-  :lang    "fr"
   :css     "custom.css"}
 #+end_src
 
@@ -51,7 +50,6 @@ Here are the configuration keys:
 : :tagline - Website tagline (default: "Topics to explore")
 : :footer  - Footer HTML
 : :source  - URL displayed as content source
-: :lang    - Language: "en" or "fr" (default: "en")
 : :css     - Custom CSS file to include
 
 Use =$ topics -c my_config.edn input.json= to use another file name than

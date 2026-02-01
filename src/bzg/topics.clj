@@ -37,8 +37,7 @@
   {:format  "auto"
    :title   "Topics"
    :tagline "Topics to explore"
-   :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"
-   :lang    "en"})
+   :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"})
 
 (def cli-options
   {:input-file    {:alias :i :desc "Path or URL to input file (JSON, EDN, or YAML)" :ref "<file|url>"}
@@ -49,7 +48,6 @@
    :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
    :footer        {:alias :F :desc "Footer HTML" :ref "<string>"}
    :source        {:alias :s :desc "URL to display as content source" :ref "<url>"}
-   :lang          {:alias :g :desc "Language: en or fr" :ref "<string>"}
    :css           {:alias :C :desc "Custom CSS file to include (overrides default styles)" :ref "<file>"}
    :config        {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
    :verbose       {:alias :v :desc "Enable verbose output" :type :boolean}
@@ -62,24 +60,29 @@
         :no-category-results "Aucun résultat trouvé dans cette catégorie."
         :topics-count        "sujets"
         :content-source      "Source des contenus"
-        :skip-to-content     "Passer au contenu"
         :all-categories      "Toutes les catégories"
         :view-all-flat       "Voir la liste complète"
-        :view-by-category    "Voir par catégorie"
-        :lang                "fr"}
+        :view-by-category    "Voir par catégorie"}
+   :de {:search-placeholder  "Suchen"
+        :clear-search        "Suche löschen"
+        :no-search-results   "Keine Ergebnisse gefunden. Versuchen Sie es mit anderen Begriffen."
+        :no-category-results "Keine Ergebnisse in dieser Kategorie gefunden."
+        :topics-count        "Themen"
+        :content-source      "Inhaltsquelle"
+        :all-categories      "Alle Kategorien"
+        :view-all-flat       "Vollständige Liste anzeigen"
+        :view-by-category    "Nach Kategorie anzeigen"}
    :en {:search-placeholder  "Search"
         :clear-search        "Clear search"
         :no-search-results   "No results match your search. Try with other terms."
         :no-category-results "No results found in this category."
         :topics-count        "topics"
         :content-source      "Content source"
-        :skip-to-content     "Skip to content"
         :all-categories      "All categories"
         :view-all-flat       "View full list"
-        :view-by-category    "View by category"
-        :lang                "en"}})
+        :view-by-category    "View by category"}})
 
-(def config-keys [:title :tagline :footer :source :lang :css :verbose])
+(def config-keys [:title :tagline :footer :source :css :verbose])
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
@@ -288,8 +291,6 @@
       (str/replace "</" "<\\/")))
 
 (def css-styles "
-.skip-link { position: absolute; top: -40px; left: 0; background: var(--pico-primary); color: #fff; padding: .5rem; z-index: 100; }
-.skip-link:focus { top: 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
 .card { padding: 1.5rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-muted-border-color); transition: transform .2s, box-shadow .2s; }
 .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,.1); text-decoration: none; }
@@ -306,26 +307,53 @@ details[open] summary { margin-bottom: .75rem; }
 details summary:hover .permalink { opacity: .6; }
 .permalink:hover { opacity: 1 !important; }
 .hidden { display: none !important; }
+.view-toggle { margin-bottom: 1.5rem; }
 footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 .noscript-content .category-section { margin-bottom: 2rem; }
 .noscript-content .category-section h2 { border-bottom: 1px solid var(--pico-muted-border-color); padding-bottom: .5rem; margin-bottom: 1rem; }
 .noscript-content article { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
 .noscript-content article h3 { margin-top: 0; margin-bottom: .75rem; }")
 
-(defn generate-js [topics-data lang no-categories?]
-  (let [strings-json (json/generate-string
-                      {:noSearchResults   (:no-search-results lang)
-                       :noCategoryResults (:no-category-results lang)
-                       :topicsCount       (:topics-count lang)
-                       :allCategories     (:all-categories lang)
-                       :viewAllFlat       (:view-all-flat lang)
-                       :viewByCategory    (:view-by-category lang)
-                       :searchPlaceholder (:search-placeholder lang)
-                       :clearSearch       (:clear-search lang)})]
+(defn generate-js [topics-data ui-strings no-categories?]
+  (let [all-strings-json (json/generate-string
+                          {:fr {:noSearchResults   (:no-search-results (:fr ui-strings))
+                                :noCategoryResults (:no-category-results (:fr ui-strings))
+                                :topicsCount       (:topics-count (:fr ui-strings))
+                                :allCategories     (:all-categories (:fr ui-strings))
+                                :viewAllFlat       (:view-all-flat (:fr ui-strings))
+                                :viewByCategory    (:view-by-category (:fr ui-strings))
+                                :searchPlaceholder (:search-placeholder (:fr ui-strings))
+                                :clearSearch       (:clear-search (:fr ui-strings))}
+                           :de {:noSearchResults   (:no-search-results (:de ui-strings))
+                                :noCategoryResults (:no-category-results (:de ui-strings))
+                                :topicsCount       (:topics-count (:de ui-strings))
+                                :allCategories     (:all-categories (:de ui-strings))
+                                :viewAllFlat       (:view-all-flat (:de ui-strings))
+                                :viewByCategory    (:view-by-category (:de ui-strings))
+                                :searchPlaceholder (:search-placeholder (:de ui-strings))
+                                :clearSearch       (:clear-search (:de ui-strings))}
+                           :en {:noSearchResults   (:no-search-results (:en ui-strings))
+                                :noCategoryResults (:no-category-results (:en ui-strings))
+                                :topicsCount       (:topics-count (:en ui-strings))
+                                :allCategories     (:all-categories (:en ui-strings))
+                                :viewAllFlat       (:view-all-flat (:en ui-strings))
+                                :viewByCategory    (:view-by-category (:en ui-strings))
+                                :searchPlaceholder (:search-placeholder (:en ui-strings))
+                                :clearSearch       (:clear-search (:en ui-strings))}})]
     (str "(function() {
   'use strict';
   const topicsData = " (topics-to-js-array topics-data no-categories?) ";
-  const strings = " strings-json ";
+  const allStrings = " all-strings-json ";
+
+  // Detect browser language and select appropriate strings
+  function detectLanguage() {
+    const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    if (lang.startsWith('fr')) return 'fr';
+    if (lang.startsWith('de')) return 'de';
+    return 'en';
+  }
+  const strings = allStrings[detectLanguage()];
+
   let currentCategory = null;
   let currentSearch = '';
   let viewMode = 'categories'; // 'categories' or 'flat'
@@ -623,12 +651,13 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 
 (defn generate-noscript-content
   "Generate static HTML content for browsers without JavaScript.
-   Shows all topics as sections, grouped by category if categories exist."
-  [topics-data no-categories? lang]
+   Shows all topics as sections, grouped by category if categories exist.
+   Uses English strings as fallback since JS language detection isn't available."
+  [topics-data no-categories?]
   (let [topics    (categorize-topics topics-data no-categories?)
         by-cat    (group-by :category topics)
         cats      (sort (keys by-cat))
-        all-cat   (:all-categories lang)
+        all-cat   (:all-categories (:en ui-strings))
         ;; Check if we have real categories or just nil/empty
         has-cats? (some #(and % (not= % "")) cats)]
     (str "<noscript><div class=\"noscript-content\">"
@@ -658,36 +687,29 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                             "</article>"))))
          "</div></noscript>")))
 
-(defn generate-main [lang topics-data no-categories?]
+(defn generate-main [topics-data no-categories?]
   (str "<main class=\"container\" id=\"main-content\" tabindex=\"-1\">
-    " (generate-noscript-content topics-data no-categories? lang) "
+    " (generate-noscript-content topics-data no-categories?) "
     <div id=\"topics-content\" aria-live=\"polite\"></div>
   </main>"))
 
-(defn generate-footer [config lang]
+(defn generate-footer [config]
   (str "<footer class=\"container\">
     <p>" (when-let [src (:source config)]
-           (str "<a target=\"_blank\" href=\"" src "\">" (:content-source lang) "</a> · "))
+           (str "<a target=\"_blank\" href=\"" src "\">" (:content-source (:en ui-strings)) "</a> · "))
        (:footer config) "</p>
   </footer>"))
 
 (defn generate-html [config topics-data no-categories?]
-  (let [cfg-lang (some-> (:lang config) name keyword)
-        lang     (or (get ui-strings cfg-lang)
-                     (:en ui-strings))
-        _        (when (and (:verbose config)
-                            (not (contains? ui-strings cfg-lang)))
-                   (println "Warning: unsupported lang" (:lang config) "- defaulting to en"))
-        css-file (:css config)]
+  (let [css-file (:css config)]
     (str "<!DOCTYPE html>
-<html lang=\"" (html-escape (:lang lang)) "\">
+<html lang=\"en\">
 " (generate-head config css-file) "
 <body>
-  <a href=\"#main-content\" class=\"skip-link\">" (:skip-to-content lang) "</a>
   " (generate-header config) "
-  " (generate-main lang topics-data no-categories?) "
-  " (generate-footer config lang) "
-  <script>" (generate-js topics-data lang no-categories?) "</script>
+  " (generate-main topics-data no-categories?) "
+  " (generate-footer config) "
+  <script>" (generate-js topics-data ui-strings no-categories?) "</script>
 </body>
 </html>")))
 
