@@ -291,6 +291,7 @@
       (str/replace "</" "<\\/")))
 
 (def css-styles "
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
 .card { padding: 1.5rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-muted-border-color); transition: transform .2s, box-shadow .2s; }
 .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,.1); text-decoration: none; }
@@ -364,7 +365,8 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
   const searchRow = document.createElement('div');
   searchRow.className = 'search-row';
   searchRow.setAttribute('role', 'search');
-  searchRow.innerHTML = '<input placeholder=\"' + strings.searchPlaceholder + '\" type=\"search\" id=\"search-input\" name=\"q\">' +
+  searchRow.innerHTML = '<label for=\"search-input\" class=\"visually-hidden\">' + strings.searchPlaceholder + '</label>' +
+    '<input placeholder=\"' + strings.searchPlaceholder + '\" type=\"search\" id=\"search-input\" name=\"q\">' +
     '<button type=\"button\" class=\"secondary outline hidden\" id=\"clear-search\" aria-label=\"' + strings.clearSearch + '\">✕</button>';
   contentDiv.parentNode.insertBefore(searchRow, contentDiv);
 
