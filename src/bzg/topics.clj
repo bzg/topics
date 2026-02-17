@@ -295,7 +295,7 @@
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
 .card { padding: 1.5rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-muted-border-color); transition: transform .2s, box-shadow .2s; }
 .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,.1); text-decoration: none; }
-.card h3 { margin-bottom: .5rem; }
+.card h2 { margin-bottom: .5rem; }
 .card p { margin: 0; color: var(--pico-muted-color); }
 .search-row { display: flex; gap: .5rem; align-items: center; margin-bottom: 2rem; }
 .search-row input { flex: 1; margin: 0; }
@@ -313,7 +313,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 .noscript-content .category-section { margin-bottom: 2rem; }
 .noscript-content .category-section h2 { border-bottom: 1px solid var(--pico-muted-border-color); padding-bottom: .5rem; margin-bottom: 1rem; }
 .noscript-content article { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
-.noscript-content article h3 { margin-top: 0; margin-bottom: .75rem; }")
+.noscript-content article h2 { margin-top: 0; margin-bottom: .75rem; }")
 
 (defn generate-js [topics-data ui-strings no-categories?]
   (let [all-strings-json (json/generate-string
@@ -453,7 +453,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     html += '<nav class=\"grid\">';
     categories.forEach(cat => {
       html += `<a href=\"#\" class=\"card\" data-category=\"${escapeHtml(cat.name)}\">
-        <h3>${escapeHtml(cat.name)}</h3>
+        <h2>${escapeHtml(cat.name)}</h2>
         <p>${cat.count} ${strings.topicsCount}</p>
       </a>`;
     });
@@ -675,7 +675,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                                       (for [topic cat-topics
                                             :let [id (get-topic-id topic)]]
                                         (str "<article id=\"noscript-" id "\">"
-                                             "<h3>" (html-escape (:title topic)) "</h3>"
+                                             "<h2>" (html-escape (:title topic)) "</h2>"
                                              "<div>" (:content topic) "</div>"
                                              "</article>")))
                             "</section>")))
@@ -684,7 +684,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                      (for [topic topics
                            :let [id (get-topic-id topic)]]
                        (str "<article id=\"noscript-" id "\">"
-                            "<h3>" (html-escape (:title topic)) "</h3>"
+                            "<h2>" (html-escape (:title topic)) "</h2>"
                             "<div>" (:content topic) "</div>"
                             "</article>"))))
          "</div></noscript>")))
