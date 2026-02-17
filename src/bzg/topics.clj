@@ -488,6 +488,18 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     return html;
   }
 
+  function setupAriaExpanded() {
+    document.querySelectorAll('details').forEach(details => {
+      const summary = details.querySelector('summary');
+      if (summary) {
+        summary.setAttribute('aria-expanded', details.open ? 'true' : 'false');
+        details.addEventListener('toggle', () => {
+          summary.setAttribute('aria-expanded', details.open ? 'true' : 'false');
+        });
+      }
+    });
+  }
+
   function render() {
     let html;
     const categories = getCategories();
@@ -506,6 +518,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     }
 
     contentDiv.innerHTML = html;
+    setupAriaExpanded();
     openAndScrollToHash();
 
     // Handle view toggle click
@@ -567,6 +580,8 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     const el = document.getElementById(hash);
     if (el && el.tagName === 'DETAILS') {
       el.open = true;
+      const summary = el.querySelector('summary');
+      if (summary) summary.setAttribute('aria-expanded', 'true');
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }
