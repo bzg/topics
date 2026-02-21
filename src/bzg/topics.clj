@@ -35,6 +35,7 @@
 
 (def defaults
   {:format  "auto"
+   :lang    "en"
    :title   "Topics"
    :tagline "Topics to explore"
    :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"})
@@ -43,6 +44,7 @@
   {:input-file    {:alias :i :desc "Path or URL to input file (JSON, EDN, or YAML)" :ref "<file|url>"}
    :format        {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>"
                    :validate #(contains? #{"auto" "json" "edn" "yaml"} %)}
+   :lang          {:alias :l :desc "HTML lang attribute (e.g. en, fr, de)" :ref "<string>"}
    :no-categories {:alias :n :desc "Ignore categories (flat list of topics)" :type :boolean}
    :title         {:alias :T :desc "Website title" :ref "<string>"}
    :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
@@ -82,7 +84,7 @@
         :view-all-flat       "View full list"
         :view-by-category    "View by category"}})
 
-(def config-keys [:title :tagline :footer :source :css :verbose])
+(def config-keys [:title :tagline :footer :source :css :lang :verbose])
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
@@ -315,32 +317,26 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 .noscript-content article { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
 .noscript-content article h2 { margin-top: 0; margin-bottom: .75rem; }")
 
+;; Maps Clojure ui-strings keys to camelCase JS property names.
+(def js-key-mapping
+  {:no-search-results   :noSearchResults
+   :no-category-results :noCategoryResults
+   :topics-count        :topicsCount
+   :all-categories      :allCategories
+   :view-all-flat       :viewAllFlat
+   :view-by-category    :viewByCategory
+   :search-placeholder  :searchPlaceholder
+   :clear-search        :clearSearch})
+
+(defn ui-strings-for-js [ui-strings]
+  (into {} (map (fn [[lang m]]
+                  [lang (into {} (map (fn [[clj-key js-key]]
+                                        [js-key (get m clj-key)])
+                                      js-key-mapping))])
+                ui-strings)))
+
 (defn generate-js [topics-data ui-strings no-categories?]
-  (let [all-strings-json (json/generate-string
-                          {:fr {:noSearchResults   (:no-search-results (:fr ui-strings))
-                                :noCategoryResults (:no-category-results (:fr ui-strings))
-                                :topicsCount       (:topics-count (:fr ui-strings))
-                                :allCategories     (:all-categories (:fr ui-strings))
-                                :viewAllFlat       (:view-all-flat (:fr ui-strings))
-                                :viewByCategory    (:view-by-category (:fr ui-strings))
-                                :searchPlaceholder (:search-placeholder (:fr ui-strings))
-                                :clearSearch       (:clear-search (:fr ui-strings))}
-                           :de {:noSearchResults   (:no-search-results (:de ui-strings))
-                                :noCategoryResults (:no-category-results (:de ui-strings))
-                                :topicsCount       (:topics-count (:de ui-strings))
-                                :allCategories     (:all-categories (:de ui-strings))
-                                :viewAllFlat       (:view-all-flat (:de ui-strings))
-                                :viewByCategory    (:view-by-category (:de ui-strings))
-                                :searchPlaceholder (:search-placeholder (:de ui-strings))
-                                :clearSearch       (:clear-search (:de ui-strings))}
-                           :en {:noSearchResults   (:no-search-results (:en ui-strings))
-                                :noCategoryResults (:no-category-results (:en ui-strings))
-                                :topicsCount       (:topics-count (:en ui-strings))
-                                :allCategories     (:all-categories (:en ui-strings))
-                                :viewAllFlat       (:view-all-flat (:en ui-strings))
-                                :viewByCategory    (:view-by-category (:en ui-strings))
-                                :searchPlaceholder (:search-placeholder (:en ui-strings))
-                                :clearSearch       (:clear-search (:en ui-strings))}})]
+  (let [all-strings-json (json/generate-string (ui-strings-for-js ui-strings))]
     (str "(function() {
   'use strict';
   const topicsData = " (topics-to-js-array topics-data no-categories?) ";
@@ -387,6 +383,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
       .replace(/['’]/g, \"'\");
   }
 
+  // Keep in sync with the Clojure slugify function.
   function slugify(text) {
     return String(text || '')
       .toLowerCase()
@@ -632,6 +629,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
       (str/replace "\"" "&quot;")
       (str/replace "'" "&#39;")))
 
+;; Keep in sync with the JS slugify in generate-js.
 (defn slugify [text]
   (-> (or text "")
       str/lower-case
@@ -713,14 +711,14 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 (defn generate-footer [config]
   (str "<footer class=\"container\">
     <p>" (when-let [src (:source config)]
-           (str "<a target=\"_blank\" href=\"" src "\">" (:content-source (:en ui-strings)) "</a> · "))
+           (str "<a target=\"_blank\" href=\"" (html-escape src) "\">" (:content-source (:en ui-strings)) "</a> · "))
        (:footer config) "</p>
   </footer>"))
 
 (defn generate-html [config topics-data no-categories?]
   (let [css-file (:css config)]
     (str "<!DOCTYPE html>
-<html lang=\"en\">
+<html lang=\"" (html-escape (:lang config)) "\">
 " (generate-head config css-file) "
 <body>
   " (generate-header config) "
@@ -760,8 +758,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 (defn show-help []
   (println "Usage: topics [options] -i <file|url>")
   (println "\nGenerates a static HTML/CSS/JS site from topics data.\n\nOptions:")
-  (println (cli/format-opts {:spec cli-options}))
-  (System/exit 0))
+  (println (cli/format-opts {:spec cli-options})))
 
 (defn -main [& args]
   (try
@@ -774,7 +771,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                  (assoc :config "config.edn")
                  (and (not (:css opts)) (fs/exists? "custom.css"))
                  (assoc :css "custom.css"))]
-      (when (:help opts) (show-help))
+      (when (:help opts) (show-help) (System/exit 0))
       (when (:verbose opts)
         (when (and (not (some #{"-c" "--config"} args))
                    (:config opts))
@@ -784,7 +781,8 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
           (println "Auto-detected CSS file: custom.css")))
       (when-not (:input-file opts)
         (println "Error: topics file or URL is required\n")
-        (show-help))
+        (show-help)
+        (System/exit 1))
       (generate-site opts))
     (catch Exception e
       (println "ERROR:" (.getMessage e))
