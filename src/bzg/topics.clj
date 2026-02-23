@@ -648,15 +648,16 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     (slugify title)))
 
 (defn generate-head [config css-file]
-  (str "<head>
+  (let [css-name (when css-file (str (fs/file-name css-file)))]
+    (str "<head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
   <title>" (html-escape (:title config)) "</title>
   <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
   <style>" css-styles "</style>"
-       (when css-file "\n  <link rel=\"stylesheet\" href=\"custom.css\">") "
-</head>"))
+         (when css-name (str "\n  <link rel=\"stylesheet\" href=\"" css-name "\">")) "
+</head>")))
 
 (defn generate-header [config]
   (str "<header class=\"container\">
@@ -746,12 +747,12 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
       (System/exit 1))
     (let [topics-data (:ok topics-result)]
       (when-let [css-file (:css config)]
-        (if (and (fs/exists? css-file)
-                 (not (fs/same-file? css-file "custom.css")))
-          (do
-            (fs/copy css-file "custom.css" {:replace-existing true})
-            (log verbose "Copied:" css-file "-> custom.css"))
-          (log verbose "Skipping CSS copy: source matches destination or missing.")))
+        (let [target (str (fs/file-name css-file))]
+          (if (fs/exists? css-file)
+            (when-not (and (fs/exists? target) (fs/same-file? css-file target))
+              (fs/copy css-file target {:replace-existing true})
+              (log verbose "Copied:" css-file "->" target))
+            (log verbose "CSS file not found:" css-file))))
       (spit "index.html" (generate-html config topics-data no-categories))
       (println "Generated: index.html"))))
 
