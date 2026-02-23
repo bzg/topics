@@ -1,0 +1,623 @@
+/*
+ * dsfr.css — DSFR-inspired theme for topics.clj
+ * Based on Système de Design de l'État guidelines
+ * https://www.systeme-de-design.gouv.fr/
+ *
+ * Official color scheme:
+ * - Blue France:  #000091  (Primary institutional color)
+ * - Red Marianne: #e1000f  (Accent / alert)
+ * - Grey palette: #161616 → #f6f6f6
+ *
+ * Functional colors:
+ * - Success:  #18753c
+ * - Info:     #0063cb
+ * - Warning:  #b34000
+ * - Error:    #ce0500
+ *
+ * Note: la police Marianne est propriété de l'État français.
+ * Son usage est réservé aux sites de l'administration.
+ * Ce fichier la référence en premier choix mais fonctionne
+ * sans elle via les polices système en fallback.
+ *
+ * Includes automatic dark mode support via prefers-color-scheme.
+ */
+
+:root {
+  /* ========================================
+     DSFR Institutional Colors (constant)
+     ======================================== */
+  --dsfr-blue-france:     #000091;
+  --dsfr-red-marianne:    #e1000f;
+
+  /* Blue France shades */
+  --dsfr-blue-hover:      #1212ff;
+  --dsfr-blue-active:     #2323ff;
+  --dsfr-blue-975:        #f5f5fe;
+  --dsfr-blue-950:        #ececfe;
+  --dsfr-blue-925:        #e3e3fd;
+  --dsfr-blue-850:        #cacafb;
+
+  /* ========================================
+     Light Mode Colors (default)
+     ======================================== */
+  --dsfr-grey-1000:  #161616;
+  --dsfr-grey-900:   #2a2a2a;
+  --dsfr-grey-800:   #3a3a3a;
+  --dsfr-grey-625:   #666666;
+  --dsfr-grey-425:   #929292;
+  --dsfr-grey-200:   #e5e5e5;
+  --dsfr-grey-100:   #f0f0f0;
+  --dsfr-grey-50:    #f6f6f6;
+
+  /* Functional colors */
+  --dsfr-success:    #18753c;
+  --dsfr-success-bg: #b8fec9;
+  --dsfr-info:       #0063cb;
+  --dsfr-info-bg:    #e8edff;
+  --dsfr-warning:    #b34000;
+  --dsfr-warning-bg: #ffe9e6;
+  --dsfr-error:      #ce0500;
+  --dsfr-error-bg:   #ffe9e6;
+
+  /* Semantic aliases for the theme */
+  --dsfr-text:         var(--dsfr-grey-1000);
+  --dsfr-text-muted:   var(--dsfr-grey-625);
+  --dsfr-heading:      var(--dsfr-grey-1000);
+  --dsfr-border:       var(--dsfr-grey-200);
+  --dsfr-border-hover: var(--dsfr-grey-425);
+  --dsfr-bg:           #ffffff;
+  --dsfr-bg-elevated:  #ffffff;
+  --dsfr-bg-alt:       var(--dsfr-grey-50);
+  --dsfr-code-bg:      var(--dsfr-grey-50);
+  --dsfr-shadow:       rgba(0, 0, 0, 0.08);
+  --dsfr-shadow-blue:  rgba(0, 0, 145, 0.12);
+
+  /* Override Pico CSS variables */
+  --pico-primary:             var(--dsfr-blue-france);
+  --pico-primary-hover:       var(--dsfr-blue-hover);
+  --pico-primary-focus:       rgba(0, 0, 145, 0.2);
+  --pico-primary-inverse:     #ffffff;
+  --pico-muted-color:         var(--dsfr-text-muted);
+  --pico-muted-border-color:  var(--dsfr-border);
+
+  /* Typography */
+  --dsfr-font-family: "Marianne", -apple-system, BlinkMacSystemFont,
+                      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --dsfr-font-mono:   "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                      Courier, monospace;
+
+  color-scheme: light dark;
+}
+
+/* ========================================
+   Dark Mode Overrides
+   ======================================== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --dsfr-blue-france:  #8585f6;
+    --dsfr-blue-hover:   #9d9dff;
+    --dsfr-blue-active:  #b1b1ff;
+    --dsfr-blue-975:     #1b1b35;
+    --dsfr-blue-950:     #21213f;
+    --dsfr-blue-925:     #272747;
+    --dsfr-blue-850:     #313178;
+    --dsfr-red-marianne: #ff5655;
+
+    --dsfr-grey-1000: #e5e5e5;
+    --dsfr-grey-900:  #cfcfcf;
+    --dsfr-grey-800:  #b8b8b8;
+    --dsfr-grey-625:  #929292;
+    --dsfr-grey-425:  #666666;
+    --dsfr-grey-200:  #3a3a3a;
+    --dsfr-grey-100:  #2a2a2a;
+    --dsfr-grey-50:   #1e1e1e;
+
+    --dsfr-success:    #27a658;
+    --dsfr-success-bg: #1a2e22;
+    --dsfr-info:       #518fff;
+    --dsfr-info-bg:    #1a2233;
+    --dsfr-warning:    #fc5d00;
+    --dsfr-warning-bg: #33231a;
+    --dsfr-error:      #ff5655;
+    --dsfr-error-bg:   #331a1a;
+
+    --dsfr-bg:          #1a1a1a;
+    --dsfr-bg-elevated: #242424;
+    --dsfr-bg-alt:      #1e1e1e;
+    --dsfr-code-bg:     #2a2a2a;
+    --dsfr-shadow:      rgba(0, 0, 0, 0.4);
+    --dsfr-shadow-blue: rgba(133, 133, 246, 0.15);
+
+    --pico-primary-focus: rgba(133, 133, 246, 0.25);
+    --pico-accordion-open-summary-color: var(--dsfr-grey-800);
+  }
+}
+
+/* ========================================
+   Base Typography & Body
+   ======================================== */
+body {
+  font-family: var(--dsfr-font-family);
+  color: var(--dsfr-text);
+  background-color: var(--dsfr-bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ========================================
+   Links
+   ======================================== */
+a {
+  color: var(--dsfr-blue-france);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+a:hover {
+  color: var(--dsfr-blue-hover);
+  text-decoration: underline;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--dsfr-blue-france);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   Header
+   ======================================== */
+header.container {
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+  border-bottom: none;
+}
+
+header h1 {
+  margin-bottom: 0.5rem;
+}
+
+header h1 a {
+  color: var(--dsfr-heading);
+  text-decoration: none;
+  font-weight: 700;
+  transition: color 0.15s ease;
+}
+
+header h1 a:hover {
+  color: var(--dsfr-blue-france);
+  text-decoration: none;
+}
+
+header p {
+  color: var(--dsfr-text-muted);
+  font-size: 1.1rem;
+  margin-bottom: 0;
+}
+
+/* Blue France bar — DSFR institutional marker */
+header.container::after {
+  content: '';
+  display: block;
+  height: 3px;
+  margin-top: 1.5rem;
+  background: var(--dsfr-blue-france);
+}
+
+/* ========================================
+   Search Input
+   ======================================== */
+.search-row input[type="search"] {
+  border: 1px solid var(--dsfr-border);
+  border-radius: 0;
+  background-color: var(--dsfr-bg-elevated);
+  color: var(--dsfr-text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search-row input[type="search"]::placeholder {
+  color: var(--dsfr-text-muted);
+}
+
+.search-row input[type="search"]:focus {
+  border-color: var(--dsfr-blue-france);
+  box-shadow: 0 0 0 3px var(--pico-primary-focus);
+  outline: none;
+}
+
+#clear-search {
+  color: var(--dsfr-text-muted);
+  border-color: var(--dsfr-border);
+  background-color: var(--dsfr-bg-elevated);
+  border-radius: 0;
+  transition: all 0.15s ease;
+}
+
+#clear-search:hover {
+  color: var(--dsfr-blue-france);
+  border-color: var(--dsfr-blue-france);
+}
+
+/* ========================================
+   Headings
+   ======================================== */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--dsfr-heading);
+  font-weight: 700;
+}
+
+/* ========================================
+   Category Cards (Grid View)
+   ======================================== */
+.card {
+  border: 1px solid var(--dsfr-border);
+  border-radius: 0;
+  background: var(--dsfr-bg-elevated);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: var(--dsfr-blue-france);
+  box-shadow: 0 4px 16px var(--dsfr-shadow-blue);
+}
+
+.card h2 {
+  color: var(--dsfr-heading);
+  font-weight: 700;
+  transition: color 0.15s ease;
+}
+
+.card:hover h2 {
+  color: var(--dsfr-blue-france);
+}
+
+.card p {
+  color: var(--dsfr-text-muted);
+}
+
+/* ========================================
+   Back Link
+   ======================================== */
+.back-link {
+  color: var(--dsfr-blue-france);
+  font-weight: 500;
+}
+
+.back-link:hover {
+  color: var(--dsfr-blue-hover);
+}
+
+/* ========================================
+   View Toggle
+   ======================================== */
+.view-toggle {
+  color: var(--dsfr-text-muted);
+  font-size: 0.95rem;
+  margin-bottom: 1.25rem;
+}
+
+.view-toggle a {
+  color: var(--dsfr-blue-france);
+  font-weight: 500;
+}
+
+.view-toggle a:hover {
+  color: var(--dsfr-blue-hover);
+  text-decoration: underline;
+}
+
+/* ========================================
+   Details/Accordion Styling
+   ======================================== */
+details {
+  border: 1px solid var(--dsfr-border);
+  border-radius: 0;
+  background-color: var(--dsfr-bg-elevated);
+  margin-bottom: 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+details:hover {
+  border-color: var(--dsfr-border-hover);
+}
+
+details[open] {
+  border-color: var(--dsfr-blue-france);
+  box-shadow: 0 2px 8px var(--dsfr-shadow-blue);
+}
+
+details summary {
+  color: var(--dsfr-heading);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.875rem 1rem;
+  transition: color 0.15s ease;
+}
+
+details summary:hover {
+  color: var(--dsfr-blue-france);
+}
+
+details[open] summary {
+  color: var(--dsfr-blue-france);
+  border-bottom: 1px solid var(--dsfr-border);
+}
+
+/* Permalink icon */
+.permalink {
+  color: var(--dsfr-grey-425);
+  opacity: 0.5;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.permalink:hover {
+  color: var(--dsfr-blue-france) !important;
+  opacity: 1;
+}
+
+/* Content inside details */
+details > div,
+details > p,
+details > ul,
+details > ol {
+  padding: 1rem;
+}
+
+details p, details ul, details ol {
+  color: var(--dsfr-text);
+}
+
+details a {
+  color: var(--dsfr-blue-france);
+}
+
+details a:hover {
+  color: var(--dsfr-blue-hover);
+  text-decoration: underline;
+}
+
+/* ========================================
+   Code Blocks
+   ======================================== */
+code {
+  font-family: var(--dsfr-font-mono);
+  font-size: 0.875em;
+  padding: 0.2em 0.4em;
+  background-color: var(--dsfr-code-bg);
+  border: 1px solid var(--dsfr-border);
+  border-radius: 0;
+  color: var(--dsfr-text);
+}
+
+pre {
+  background-color: var(--dsfr-code-bg);
+  border: 1px solid var(--dsfr-border);
+  border-radius: 0;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+pre code {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 0.875rem;
+  color: var(--dsfr-heading);
+}
+
+details pre,
+details code {
+  background-color: var(--dsfr-code-bg);
+}
+
+/* ========================================
+   Tables
+   ======================================== */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th {
+  background-color: var(--dsfr-blue-france);
+  color: #ffffff;
+  font-weight: 700;
+  text-align: left;
+  padding: 0.75rem 1rem;
+}
+
+td {
+  border: 1px solid var(--dsfr-border);
+  padding: 0.625rem 1rem;
+  background-color: var(--dsfr-bg-elevated);
+}
+
+tr:nth-child(even) td {
+  background-color: var(--dsfr-bg-alt);
+}
+
+tr:hover td {
+  background-color: var(--dsfr-blue-975);
+}
+
+details table {
+  margin: 0;
+}
+
+/* ========================================
+   Blockquotes
+   Blue France accent (institutional callout style)
+   ======================================== */
+blockquote {
+  border-left: 4px solid var(--dsfr-blue-france);
+  background-color: var(--dsfr-blue-975);
+  color: var(--dsfr-text);
+  padding: 1rem 1.5rem;
+  margin: 1rem 0;
+  border-radius: 0;
+}
+
+blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ========================================
+   Footer
+   ======================================== */
+footer.container {
+  border-top: 2px solid var(--dsfr-blue-france);
+  padding-top: 1.5rem;
+  margin-top: 3rem;
+  color: var(--dsfr-text-muted);
+  font-size: 0.9rem;
+}
+
+footer a {
+  color: var(--dsfr-blue-france);
+}
+
+footer a:hover {
+  color: var(--dsfr-blue-hover);
+}
+
+/* ========================================
+   Buttons
+   ======================================== */
+button,
+[type="submit"],
+[type="button"] {
+  background-color: var(--dsfr-blue-france);
+  border-color: var(--dsfr-blue-france);
+  color: #ffffff;
+  border-radius: 0;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              box-shadow 0.15s ease;
+}
+
+button:hover,
+[type="submit"]:hover,
+[type="button"]:hover {
+  background-color: var(--dsfr-blue-hover);
+  border-color: var(--dsfr-blue-hover);
+}
+
+button:focus-visible,
+[type="submit"]:focus-visible,
+[type="button"]:focus-visible {
+  box-shadow: 0 0 0 3px var(--pico-primary-focus);
+}
+
+/* Secondary/outline buttons */
+button.secondary,
+button.outline {
+  background-color: transparent;
+  border: 1px solid var(--dsfr-blue-france);
+  color: var(--dsfr-blue-france);
+}
+
+button.secondary:hover,
+button.outline:hover {
+  background-color: var(--dsfr-blue-975);
+  border-color: var(--dsfr-blue-hover);
+  color: var(--dsfr-blue-hover);
+}
+
+/* ========================================
+   Accessibility
+   ======================================== */
+:focus-visible {
+  outline: 2px solid var(--dsfr-blue-france);
+  outline-offset: 2px;
+}
+
+::selection {
+  background-color: var(--dsfr-blue-france);
+  color: #ffffff;
+}
+
+/* ========================================
+   Scrollbars (webkit browsers)
+   ======================================== */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--dsfr-bg-alt);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dsfr-grey-425);
+  border-radius: 5px;
+  border: 2px solid var(--dsfr-bg-alt);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dsfr-grey-625);
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsfr-grey-425) var(--dsfr-bg-alt);
+}
+
+/* ========================================
+   Print Styles
+   ======================================== */
+@media print {
+  :root {
+    --dsfr-text: #000000;
+    --dsfr-heading: #000000;
+    --dsfr-bg: #ffffff;
+    --dsfr-bg-elevated: #ffffff;
+  }
+
+  header.container::after {
+    background: #000091;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  a {
+    color: #000000;
+    text-decoration: underline;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666666;
+  }
+
+  details {
+    border: 1px solid #cccccc;
+  }
+
+  details[open] {
+    box-shadow: none;
+  }
+
+  .card:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* ========================================
+   Reduced Motion
+   ======================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}
