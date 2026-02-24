@@ -621,6 +621,12 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
   render();
 })();")))
 
+(defn ui-str
+  "Resolve a UI string key using the configured language, falling back to English."
+  [config k]
+  (let [lang (keyword (:lang config))]
+    (get-in ui-strings [lang k] (get-in ui-strings [:en k]))))
+
 (defn html-escape [s]
   (-> (or s "")
       (str/replace "&" "&amp;")
@@ -668,12 +674,12 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 (defn generate-noscript-content
   "Generate static HTML content for browsers without JavaScript.
    Shows all topics as sections, grouped by category if categories exist.
-   Uses English strings as fallback since JS language detection isn't available."
-  [topics-data no-categories?]
+   Uses the configured language for UI strings, falling back to English."
+  [config topics-data no-categories?]
   (let [topics    (categorize-topics topics-data no-categories?)
         by-cat    (group-by :category topics)
         cats      (sort (keys by-cat))
-        all-cat   (:all-categories (:en ui-strings))
+        all-cat   (ui-str config :all-categories)
         ;; Check if we have real categories or just nil/empty
         has-cats? (some #(and % (not= % "")) cats)]
     (str "<noscript><div class=\"noscript-content\">"
@@ -703,16 +709,16 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                             "</article>"))))
          "</div></noscript>")))
 
-(defn generate-main [topics-data no-categories?]
+(defn generate-main [config topics-data no-categories?]
   (str "<main class=\"container\" id=\"main-content\" tabindex=\"-1\">
-    " (generate-noscript-content topics-data no-categories?) "
+    " (generate-noscript-content config topics-data no-categories?) "
     <div id=\"topics-content\" aria-live=\"polite\"></div>
   </main>"))
 
 (defn generate-footer [config]
   (str "<footer class=\"container\">
     <p>" (when-let [src (:source config)]
-           (str "<a target=\"_blank\" href=\"" (html-escape src) "\">" (:content-source (:en ui-strings)) "</a> · "))
+           (str "<a target=\"_blank\" href=\"" (html-escape src) "\">" (ui-str config :content-source) "</a> · "))
        (:footer config) "</p>
   </footer>"))
 
@@ -723,7 +729,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 " (generate-head config css-file) "
 <body>
   " (generate-header config) "
-  " (generate-main topics-data no-categories?) "
+  " (generate-main config topics-data no-categories?) "
   " (generate-footer config) "
   <script>" (generate-js topics-data ui-strings no-categories?) "</script>
 </body>
