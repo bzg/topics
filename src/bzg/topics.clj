@@ -462,7 +462,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     topicsData.forEach(t => {
       const id = getTopicId(t);
       html += `<details id=\"${id}\">
-        <summary>${escapeHtml(t.title)}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
+        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
         <div>${t.content}</div>
       </details>`;
     });
@@ -478,7 +478,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     topics.forEach(t => {
       const id = getTopicId(t);
       html += `<details id=\"${id}\">
-        <summary>${escapeHtml(t.title)}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
+        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
         <div>${t.content}</div>
       </details>`;
     });
@@ -695,7 +695,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                                       (for [topic cat-topics
                                             :let [id (get-topic-id topic)]]
                                         (str "<article id=\"noscript-" id "\">"
-                                             "<h2>" (html-escape (:title topic)) "</h2>"
+                                             "<h2>" (:title topic) "</h2>"
                                              "<div>" (:content topic) "</div>"
                                              "</article>")))
                             "</section>")))
@@ -704,7 +704,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                      (for [topic topics
                            :let [id (get-topic-id topic)]]
                        (str "<article id=\"noscript-" id "\">"
-                            "<h2>" (html-escape (:title topic)) "</h2>"
+                            "<h2>" (:title topic) "</h2>"
                             "<div>" (:content topic) "</div>"
                             "</article>"))))
          "</div></noscript>")))
