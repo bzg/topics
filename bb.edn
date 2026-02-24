@@ -1,2 +1,2 @@
-{:src "src/bzg"
- :bbin/bin {topics {:main-opts ["-m" "topics"]}}}
+{:paths ["src/bzg"]
+ :bbin/bin {topics {:main-opts ["-m" "bzg.topics"]}}}
