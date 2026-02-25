@@ -178,14 +178,25 @@
   [node]
   (case (:type node)
     "paragraph" (str "<p>" (:content node) "</p>")
-    "list" (let [tag (if (:ordered node) "ol" "ul")]
-            (str "<" tag ">"
-                 (str/join "" (map render-node-for-topics (:items node)))
-                 "</" tag ">"))
-    "list-item" (str "<li>" (:content node)
-                    (when (seq (:children node))
-                      (str/join "" (map render-node-for-topics (:children node))))
-                    "</li>")
+    "list" (let [items (:items node)]
+            (if (:description node)
+              (str "<dl>"
+                   (str/join "" (map render-node-for-topics items))
+                   "</dl>")
+              (let [tag (if (:ordered node) "ol" "ul")]
+                (str "<" tag ">"
+                     (str/join "" (map render-node-for-topics items))
+                     "</" tag ">"))))
+    "list-item" (if (:term node)
+                  (str "<dt>" (:term node) "</dt>"
+                       "<dd>" (or (:definition node) "")
+                       (when (seq (:children node))
+                         (str/join "" (map render-node-for-topics (:children node))))
+                       "</dd>")
+                  (str "<li>" (:content node)
+                       (when (seq (:children node))
+                         (str/join "" (map render-node-for-topics (:children node))))
+                       "</li>"))
     "table" (let [rows (:rows node)
                  has-header (:has-header node)]
              (if (empty? rows) ""
