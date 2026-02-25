@@ -501,6 +501,12 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
     let html;
     const categories = getCategories();
 
+    // If URL has an anchor, switch to flat view so the target element exists
+    if (window.location.hash && !currentSearch && !currentCategory
+        && viewMode === 'categories' && hasRealCategories()) {
+      viewMode = 'flat';
+    }
+
     if (currentSearch) {
       html = renderTopicsList(searchTopics(currentSearch), false);
     } else if (currentCategory) {
@@ -616,7 +622,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
   });
 
   window.addEventListener('popstate', () => { parseUrl(); render(); });
-  window.addEventListener('hashchange', openAndScrollToHash);
+  window.addEventListener('hashchange', () => { render(); });
   parseUrl();
   render();
 })();")))
@@ -694,7 +700,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
                             (str/join "\n"
                                       (for [topic cat-topics
                                             :let [id (get-topic-id topic)]]
-                                        (str "<article id=\"noscript-" id "\">"
+                                        (str "<article id=\"" id "\">"
                                              "<h2>" (:title topic) "</h2>"
                                              "<div>" (:content topic) "</div>"
                                              "</article>")))
@@ -703,7 +709,7 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
            (str/join "\n"
                      (for [topic topics
                            :let [id (get-topic-id topic)]]
-                       (str "<article id=\"noscript-" id "\">"
+                       (str "<article id=\"" id "\">"
                             "<h2>" (:title topic) "</h2>"
                             "<div>" (:content topic) "</div>"
                             "</article>"))))
