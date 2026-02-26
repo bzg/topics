@@ -268,7 +268,7 @@
    node with a :section-number string (e.g. '1', '1.1') when num:t is set."
   [ast]
   (let [options (parse-options-string (get-in ast [:meta :options]))
-        num? (get options :num true)]
+        num? (get options :num false)]
     (if-not num?
       ast
       (letfn [(number-children [children counters]
