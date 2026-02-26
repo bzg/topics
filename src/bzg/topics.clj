@@ -108,7 +108,7 @@
       (str/starts-with? s "https://")))
 
 ;; Forward declarations for AST handling functions (defined later)
-(declare ast? flatten-ast-to-topics find-max-level)
+(declare ast? flatten-ast-to-topics find-max-level number-ast-sections)
 
 (defn load-topics-data [source format-option verbose]
   (try
@@ -130,9 +130,10 @@
                     (json/parse-string content true))]
       ;; Check if parsed data is an org-parse AST
       (if (ast? parsed)
-        (let [max-level (find-max-level parsed)
+        (let [numbered  (number-ast-sections parsed)
+              max-level (find-max-level numbered)
               _         (log verbose "Detected org-parse AST, auto-detected max level:" max-level)
-              flattened (flatten-ast-to-topics parsed max-level)]
+              flattened (flatten-ast-to-topics numbered max-level)]
           (log verbose "Flattened AST into" (count flattened) "topics")
           {:ok flattened})
         ;; Regular topics data
@@ -250,6 +251,49 @@
          first
          second)))
 
+(defn parse-options-string
+  "Parse an #+OPTIONS: value string like 'toc:t H:2 num:t' into a map."
+  [s]
+  (when (and s (not (str/blank? s)))
+    (into {}
+          (for [[_ k v] (re-seq #"(\S+):(\S+)" s)]
+            [(keyword (str/lower-case k))
+             (case v
+               "t" true
+               "nil" false
+               (try (Integer/parseInt v) (catch Exception _ v)))]))))
+
+(defn number-ast-sections
+  "Walk an org-parse AST (with string types from JSON) and annotate each section
+   node with a :section-number string (e.g. '1', '1.1') when num:t is set."
+  [ast]
+  (let [options (parse-options-string (get-in ast [:meta :options]))
+        num? (get options :num true)]
+    (if-not num?
+      ast
+      (letfn [(number-children [children counters]
+                (loop [[child & more] children
+                       counters counters
+                       result []]
+                  (if (nil? child)
+                    result
+                    (if (section? child)
+                      (let [level (:level child)
+                            updated (-> counters
+                                        (update level (fnil inc 0))
+                                        (#(reduce (fn [m k] (dissoc m k))
+                                                  %
+                                                  (filter (fn [k] (> k level)) (keys %)))))
+                            sec-num (str/join "." (map #(get updated % 1)
+                                                       (range 1 (inc level))))
+                            numbered-kids (number-children (:children child) updated)
+                            numbered-child (assoc child
+                                                  :section-number sec-num
+                                                  :children numbered-kids)]
+                        (recur more updated (conj result numbered-child)))
+                      (recur more counters (conj result child))))))]
+        (assoc ast :children (number-children (:children ast) {}))))))
+
 (defn flatten-ast-to-topics
   "Flatten an org-parse AST to extract sections at exactly the target level.
    Returns a vector of maps with :title, :content (HTML), :category, and optionally :custom_id.
@@ -268,8 +312,12 @@
                   ;; At target level: emit this section with category = penultimate path element
                   (let [content   (render-section-content-up-to-level node target-level)
                         category  (-> new-path butlast last)
-                        custom-id (get-property node "custom_id")]
-                    [(cond-> {:title    (:title node)
+                        custom-id (get-property node "custom_id")
+                        sec-num   (:section-number node)
+                        title     (if sec-num
+                                    (str sec-num " " (:title node))
+                                    (:title node))]
+                    [(cond-> {:title    title
                               :content  content
                               :category category}
                        custom-id (assoc :custom_id custom-id))])
