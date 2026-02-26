@@ -356,14 +356,14 @@
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; }
 .card { padding: 1.5rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-muted-border-color); transition: transform .2s, box-shadow .2s; }
 .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,.1); text-decoration: none; }
-.card h2 { margin-bottom: .5rem; }
+.card h2 { margin-bottom: .5rem; font-size: 1.4rem; }
 .card p { margin: 0; color: var(--pico-muted-color); }
 .search-row { display: flex; gap: .5rem; align-items: center; margin-bottom: 2rem; }
 .search-row input { flex: 1; margin: 0; }
 .back-link { display: inline; }
 .back-link::before { content: '← '; }
 details { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
-details summary { font-weight: 600; cursor: pointer; }
+details summary { font-weight: 600; cursor: pointer; font-size: 1.2rem; }
 details[open] summary { margin-bottom: .75rem; }
 .permalink { margin-left: .5rem; text-decoration: none; opacity: 0; transition: opacity .2s; font-size: .85em; }
 details summary:hover .permalink { opacity: .6; }
