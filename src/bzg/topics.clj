@@ -374,7 +374,8 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 .noscript-content .category-section { margin-bottom: 2rem; }
 .noscript-content .category-section h2 { border-bottom: 1px solid var(--pico-muted-border-color); padding-bottom: .5rem; margin-bottom: 1rem; }
 .noscript-content article { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
-.noscript-content article h2 { margin-top: 0; margin-bottom: .75rem; }")
+.noscript-content article h2 { margin-top: 0; margin-bottom: .75rem; }
+table { margin-bottom: 2rem; }")
 
 ;; Maps Clojure ui-strings keys to camelCase JS property names.
 (def js-key-mapping
