@@ -312,7 +312,7 @@
 .card p { margin: 0; color: var(--pico-muted-color); }
 .search-row { display: flex; gap: .5rem; align-items: center; margin-bottom: 2rem; }
 .search-row input { flex: 1; margin: 0; }
-.back-link { display: inline-block; margin-bottom: 1.5rem; }
+.back-link { display: inline; }
 .back-link::before { content: '← '; }
 details { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
 details summary { font-weight: 600; cursor: pointer; }
@@ -485,7 +485,15 @@ footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
       const msg = currentSearch ? strings.noSearchResults : strings.noCategoryResults;
       return `<p><em>${msg}</em></p>`;
     }
-    let html = showBackLink ? `<a href=\"#\" class=\"back-link\" id=\"back-to-categories\">${strings.allCategories}</a>` : '';
+    let html = '';
+    if (showBackLink || currentSearch) {
+      html += '<div class=\"view-toggle\">';
+      html += '<span>' + topics.length + ' ' + strings.topicsCount + '</span>';
+      if (showBackLink) {
+        html += ' · <a href=\"#\" class=\"back-link\" id=\"back-to-categories\">' + strings.allCategories + '</a>';
+      }
+      html += '</div>';
+    }
     topics.forEach(t => {
       const id = getTopicId(t);
       html += `<details id=\"${id}\">
