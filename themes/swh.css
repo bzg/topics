@@ -303,7 +303,7 @@ details summary {
   color: var(--swh-grey-dark);
   font-weight: 500;
   cursor: pointer;
-  padding: 0.875rem 1rem;
+  padding: 0.6rem 1rem;
   transition: color 0.15s ease;
 }
 

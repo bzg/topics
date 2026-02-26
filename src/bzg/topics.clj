@@ -363,7 +363,7 @@
 .back-link { display: inline; }
 .back-link::before { content: '← '; }
 details { border: 1px solid var(--pico-muted-border-color); border-radius: var(--pico-border-radius); padding: 1rem; margin-bottom: 1rem; }
-details summary { font-weight: 600; cursor: pointer; font-size: 1.2rem; }
+details summary { font-weight: 600; cursor: pointer; font-size: 1.2rem; line-height: 1.4em; }
 details[open] summary { margin-bottom: .75rem; }
 .permalink { margin-left: .5rem; text-decoration: none; opacity: 0; transition: opacity .2s; font-size: .85em; }
 details summary:hover .permalink { opacity: .6; }
