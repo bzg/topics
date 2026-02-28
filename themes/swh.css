@@ -303,7 +303,7 @@ details summary {
   color: var(--swh-grey-dark);
   font-weight: 500;
   cursor: pointer;
-  padding: 0.6rem 1rem;
+  padding: 0.5rem 0.75rem;
   transition: color 0.15s ease;
 }
 
@@ -333,7 +333,7 @@ details > div,
 details > p,
 details > ul,
 details > ol {
-  padding: 1rem;
+  padding: 0.625rem 0.75rem;
 }
 
 details p, details ul, details ol {
