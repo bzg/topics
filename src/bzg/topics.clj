@@ -353,10 +353,10 @@
 
 (def css-styles "
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
 .card { padding: 1rem; border-radius: var(--pico-border-radius); border: 1px solid var(--pico-muted-border-color); transition: transform .2s, box-shadow .2s; }
 .card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,.08); text-decoration: none; }
-.card h2 { margin-bottom: .35rem; font-size: 1.1rem; }
+.card h2 { margin-bottom: .40rem; font-size: 1.3rem; }
 .card p { margin: 0; color: var(--pico-muted-color); font-size: .9rem; }
 .search-row { display: flex; gap: .5rem; align-items: center; margin-bottom: 2rem; }
 .search-row input { flex: 1; margin: 0; }
