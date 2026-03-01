@@ -300,6 +300,7 @@ details {
   background-color: var(--org-bg-elevated);
   margin-bottom: 0.75rem;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  padding: .6rem;
 }
 
 details:hover {
