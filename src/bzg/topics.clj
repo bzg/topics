@@ -46,6 +46,7 @@
                    :validate #(contains? #{"auto" "json" "edn" "yaml"} %)}
    :lang          {:alias :l :desc "HTML lang attribute (e.g. en, fr, de)" :ref "<string>"}
    :no-categories {:alias :n :desc "Ignore categories (flat list of topics)" :type :boolean}
+   :flat          {:alias :a :desc "Default to full list view instead of categories grid" :type :boolean}
    :title         {:alias :T :desc "Website title" :ref "<string>"}
    :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
    :footer        {:alias :F :desc "Footer HTML" :ref "<string>"}
@@ -84,7 +85,7 @@
         :view-all-flat       "View full list"
         :view-by-category    "View by category"}})
 
-(def config-keys [:title :tagline :footer :source :css :lang :verbose])
+(def config-keys [:title :tagline :footer :source :css :lang :verbose :flat])
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
@@ -395,7 +396,7 @@ table { margin-bottom: 2rem; }")
                                       js-key-mapping))])
                 ui-strings)))
 
-(defn generate-js [topics-data ui-strings no-categories?]
+(defn generate-js [topics-data ui-strings no-categories? flat?]
   (let [all-strings-json (json/generate-string (ui-strings-for-js ui-strings))]
     (str "(function() {
   'use strict';
@@ -413,7 +414,7 @@ table { margin-bottom: 2rem; }")
 
   let currentCategory = null;
   let currentSearch = '';
-  let viewMode = 'categories'; // 'categories' or 'flat'
+  let viewMode = '" (if flat? "flat" "categories") "'; // 'categories' or 'flat'
   const contentDiv = document.getElementById('topics-content');
   const homeLink = document.getElementById('home-link');
 
@@ -796,7 +797,7 @@ table { margin-bottom: 2rem; }")
        (:footer config) "</p>
   </footer>"))
 
-(defn generate-html [config topics-data no-categories?]
+(defn generate-html [config topics-data no-categories? flat?]
   (let [css-file (:css config)]
     (str "<!DOCTYPE html>
 <html lang=\"" (html-escape (:lang config)) "\">
@@ -805,13 +806,14 @@ table { margin-bottom: 2rem; }")
   " (generate-header config) "
   " (generate-main config topics-data no-categories?) "
   " (generate-footer config) "
-  <script>" (generate-js topics-data ui-strings no-categories?) "</script>
+  <script>" (generate-js topics-data ui-strings no-categories? flat?) "</script>
 </body>
 </html>")))
 
 (defn generate-site [opts]
   (let [verbose       (:verbose opts)
         no-categories (:no-categories opts)
+        flat          (:flat opts)
         file-config   (when-let [config-path (:config opts)]
                         (let [result (load-config-file config-path verbose)]
                           (if (:error result)
@@ -833,7 +835,7 @@ table { margin-bottom: 2rem; }")
               (fs/copy css-file target {:replace-existing true})
               (log verbose "Copied:" css-file "->" target))
             (log verbose "CSS file not found:" css-file))))
-      (spit "index.html" (generate-html config topics-data no-categories))
+      (spit "index.html" (generate-html config topics-data no-categories flat))
       (println "Generated: index.html"))))
 
 (defn show-help []
