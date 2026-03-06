@@ -35,7 +35,7 @@
 
 (def defaults
   {:format  "auto"
-   :lang    "en"
+   :lang    nil
    :title   "Topics"
    :tagline "Topics to explore"
    :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"})
@@ -400,21 +400,22 @@ table { margin-bottom: 2rem; }")
                                       js-key-mapping))])
                 ui-strings)))
 
-(defn generate-js [topics-data ui-strings no-categories? flat?]
+(defn generate-js [topics-data ui-strings no-categories? flat? lang]
   (let [all-strings-json (json/generate-string (ui-strings-for-js ui-strings))]
     (str "(function() {
   'use strict';
   const topicsData = " (topics-to-js-array topics-data no-categories?) ";
   const allStrings = " all-strings-json ";
 
-  // Detect browser language and select appropriate strings
-  function detectLanguage() {
+" (if lang
+    (str "  const strings = allStrings['" lang "'] || allStrings['en'];")
+    (str "  function detectLanguage() {
     const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
     if (lang.startsWith('fr')) return 'fr';
     if (lang.startsWith('de')) return 'de';
     return 'en';
   }
-  const strings = allStrings[detectLanguage()];
+  const strings = allStrings[detectLanguage()];")) "
 
   let currentCategory = null;
   let currentSearch = '';
@@ -703,7 +704,7 @@ table { margin-bottom: 2rem; }")
 (defn ui-str
   "Resolve a UI string key using the configured language, falling back to English."
   [config k]
-  (let [lang (keyword (:lang config))]
+  (let [lang (keyword (or (:lang config) "en"))]
     (get-in ui-strings [lang k] (get-in ui-strings [:en k]))))
 
 (defn html-escape [s]
@@ -802,15 +803,16 @@ table { margin-bottom: 2rem; }")
   </footer>"))
 
 (defn generate-html [config topics-data no-categories? flat?]
-  (let [css-file (:css config)]
+  (let [css-file (:css config)
+        lang     (:lang config)]
     (str "<!DOCTYPE html>
-<html lang=\"" (html-escape (:lang config)) "\">
+<html lang=\"" (html-escape (or lang "en")) "\">
 " (generate-head config css-file) "
 <body>
   " (generate-header config) "
   " (generate-main config topics-data no-categories?) "
   " (generate-footer config) "
-  <script>" (generate-js topics-data ui-strings no-categories? flat?) "</script>
+  <script>" (generate-js topics-data ui-strings no-categories? flat? lang) "</script>
 </body>
 </html>")))
 
