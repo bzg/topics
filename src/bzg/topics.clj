@@ -65,7 +65,8 @@
         :content-source      "Source des contenus"
         :all-categories      "Toutes les catégories"
         :view-all-flat       "Voir la liste complète"
-        :view-by-category    "Voir par catégorie"}
+        :view-by-category    "Voir par catégorie"
+        :permalink           "Lien permanent vers cette section"}
    :de {:search-placeholder  "Suchen"
         :clear-search        "Suche löschen"
         :no-search-results   "Keine Ergebnisse gefunden. Versuchen Sie es mit anderen Begriffen."
@@ -74,7 +75,8 @@
         :content-source      "Inhaltsquelle"
         :all-categories      "Alle Kategorien"
         :view-all-flat       "Vollständige Liste anzeigen"
-        :view-by-category    "Nach Kategorie anzeigen"}
+        :view-by-category    "Nach Kategorie anzeigen"
+        :permalink           "Permanentlink zu diesem Abschnitt"}
    :en {:search-placeholder  "Search"
         :clear-search        "Clear search"
         :no-search-results   "No results match your search. Try with other terms."
@@ -83,7 +85,8 @@
         :content-source      "Content source"
         :all-categories      "All categories"
         :view-all-flat       "View full list"
-        :view-by-category    "View by category"}})
+        :view-by-category    "View by category"
+        :permalink           "Permanent link to this section"}})
 
 (def config-keys [:title :tagline :footer :source :css :lang :verbose :flat])
 
@@ -181,14 +184,14 @@
   (case (:type node)
     "paragraph" (str "<p>" (:content node) "</p>")
     "list" (let [items (:items node)]
-            (if (:description node)
-              (str "<dl>"
-                   (str/join "" (map render-node-for-topics items))
-                   "</dl>")
-              (let [tag (if (:ordered node) "ol" "ul")]
-                (str "<" tag ">"
-                     (str/join "" (map render-node-for-topics items))
-                     "</" tag ">"))))
+             (if (:description node)
+               (str "<dl>"
+                    (str/join "" (map render-node-for-topics items))
+                    "</dl>")
+               (let [tag (if (:ordered node) "ol" "ul")]
+                 (str "<" tag ">"
+                      (str/join "" (map render-node-for-topics items))
+                      "</" tag ">"))))
     "list-item" (if (:term node)
                   (str "<dt>" (:term node) "</dt>"
                        "<dd>" (or (:definition node) "")
@@ -200,21 +203,21 @@
                          (str/join "" (map render-node-for-topics (:children node))))
                        "</li>"))
     "table" (let [rows (:rows node)
-                 has-header (:has-header node)]
-             (if (empty? rows) ""
-                 (str "<table>"
-                      (when has-header
-                        (str "<thead><tr>"
-                             (str/join "" (map #(str "<th>" % "</th>") (first rows)))
-                             "</tr></thead>"))
-                      "<tbody>"
-                      (str/join ""
-                                (map (fn [row]
-                                       (str "<tr>"
-                                            (str/join "" (map #(str "<td>" % "</td>") row))
-                                            "</tr>"))
-                                     (if has-header (rest rows) rows)))
-                      "</tbody></table>")))
+                  has-header (:has-header node)]
+              (if (empty? rows) ""
+                (str "<table>"
+                     (when has-header
+                       (str "<thead><tr>"
+                            (str/join "" (map #(str "<th>" % "</th>") (first rows)))
+                            "</tr></thead>"))
+                     "<tbody>"
+                     (str/join ""
+                               (map (fn [row]
+                                      (str "<tr>"
+                                           (str/join "" (map #(str "<td>" % "</td>") row))
+                                           "</tr>"))
+                                    (if has-header (rest rows) rows)))
+                     "</tbody></table>")))
     "src-block" (str "<pre><code>" (:content node) "</code></pre>")
     "quote-block" (str "<blockquote><p>" (str/replace (:content node) #"\n\n+" "</p><p>") "</p></blockquote>")
     "fixed-width" (str "<pre>" (:content node) "</pre>")
@@ -387,7 +390,8 @@ table { margin-bottom: 2rem; }")
    :view-all-flat       :viewAllFlat
    :view-by-category    :viewByCategory
    :search-placeholder  :searchPlaceholder
-   :clear-search        :clearSearch})
+   :clear-search        :clearSearch
+   :permalink           :permalink})
 
 (defn ui-strings-for-js [ui-strings]
   (into {} (map (fn [[lang m]]
@@ -523,7 +527,7 @@ table { margin-bottom: 2rem; }")
     topicsData.forEach(t => {
       const id = getTopicId(t);
       html += `<details id=\"${id}\">
-        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
+        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" aria-label=\"${strings.permalink}\"><span aria-hidden=\"true\">🔗</span></a></summary>
         <div>${t.content}</div>
       </details>`;
     });
@@ -547,7 +551,7 @@ table { margin-bottom: 2rem; }")
     topics.forEach(t => {
       const id = getTopicId(t);
       html += `<details id=\"${id}\">
-        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" title=\"Permalink\">🔗</a></summary>
+        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" aria-label=\"${strings.permalink}\"><span aria-hidden=\"true\">🔗</span></a></summary>
         <div>${t.content}</div>
       </details>`;
     });
