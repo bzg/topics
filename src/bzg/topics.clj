@@ -645,6 +645,11 @@ table { margin-bottom: 2rem; }")
     const params = new URLSearchParams(window.location.search);
     currentSearch = params.get('q') || '';
     currentCategory = params.get('category') || null;
+    // Hash anchor takes precedence: clear filters so the target is visible
+    if (window.location.hash) {
+      currentSearch = '';
+      currentCategory = null;
+    }
     if (currentSearch) {
       searchInput.value = currentSearch;
       clearButton.classList.remove('hidden');
