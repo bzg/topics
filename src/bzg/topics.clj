@@ -66,7 +66,9 @@
         :all-categories      "Toutes les catégories"
         :view-all-flat       "Voir la liste complète"
         :view-by-category    "Voir par catégorie"
-        :permalink           "Lien permanent vers cette section"}
+        :permalink           "Lien permanent vers cette section"
+        :fold-all            "Tout replier"
+        :unfold-all          "Tout déplier"}
    :de {:search-placeholder  "Suchen"
         :clear-search        "Suche löschen"
         :no-search-results   "Keine Ergebnisse gefunden. Versuchen Sie es mit anderen Begriffen."
@@ -76,7 +78,9 @@
         :all-categories      "Alle Kategorien"
         :view-all-flat       "Vollständige Liste anzeigen"
         :view-by-category    "Nach Kategorie anzeigen"
-        :permalink           "Permanentlink zu diesem Abschnitt"}
+        :permalink           "Permanentlink zu diesem Abschnitt"
+        :fold-all            "Alle zuklappen"
+        :unfold-all          "Alle aufklappen"}
    :en {:search-placeholder  "Search"
         :clear-search        "Clear search"
         :no-search-results   "No results match your search. Try with other terms."
@@ -86,7 +90,9 @@
         :all-categories      "All categories"
         :view-all-flat       "View full list"
         :view-by-category    "View by category"
-        :permalink           "Permanent link to this section"}})
+        :permalink           "Permanent link to this section"
+        :fold-all            "Fold all"
+        :unfold-all          "Unfold all"}})
 
 (def config-keys [:title :tagline :footer :source :css :lang :verbose :flat])
 
@@ -373,7 +379,7 @@ details[open] summary { margin-bottom: .75rem; }
 details summary:hover .permalink { opacity: .6; }
 .permalink:hover { opacity: 1 !important; }
 .hidden { display: none !important; }
-.view-toggle { margin-bottom: 1.5rem; }
+.view-toggles { margin-bottom: 1.5rem; }
 footer { text-align: center; font-size: .85rem; margin-top: 3rem; }
 .noscript-content .category-section { margin-bottom: 2rem; }
 .noscript-content .category-section h2 { border-bottom: 1px solid var(--pico-muted-border-color); padding-bottom: .5rem; margin-bottom: 1rem; }
@@ -391,7 +397,9 @@ table { margin-bottom: 2rem; }")
    :view-by-category    :viewByCategory
    :search-placeholder  :searchPlaceholder
    :clear-search        :clearSearch
-   :permalink           :permalink})
+   :permalink           :permalink
+   :fold-all            :foldAll
+   :unfold-all          :unfoldAll})
 
 (defn ui-strings-for-js [ui-strings]
   (into {} (map (fn [[lang m]]
@@ -512,7 +520,7 @@ table { margin-bottom: 2rem; }")
 
   function renderCategoriesGrid() {
     const categories = getCategories();
-    let html = '<div class=\"view-toggle\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewAllFlat + '</a></div>';
+    let html = '<div class=\"view-toggles\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewAllFlat + '</a></div>';
     html += '<nav class=\"grid\">';
     categories.forEach(cat => {
       html += `<a href=\"#\" class=\"card\" data-category=\"${escapeHtml(cat.name)}\">
@@ -524,7 +532,7 @@ table { margin-bottom: 2rem; }")
   }
 
   function renderFlatList() {
-    let html = '<div class=\"view-toggle\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewByCategory + '</a></div>';
+    let html = '<div class=\"view-toggles\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewByCategory + '</a> · <a href=\"#\" id=\"toggle-fold\">' + strings.unfoldAll + '</a></div>';
     topicsData.forEach(t => {
       const id = getTopicId(t);
       html += `<details id=\"${id}\">
@@ -542,11 +550,12 @@ table { margin-bottom: 2rem; }")
     }
     let html = '';
     if (showBackLink || currentSearch) {
-      html += '<div class=\"view-toggle\">';
+      html += '<div class=\"view-toggles\">';
       html += '<span>' + topics.length + ' ' + strings.topicsCount + '</span>';
       if (showBackLink) {
         html += ' · <a href=\"#\" class=\"back-link\" id=\"back-to-categories\">' + strings.allCategories + '</a>';
       }
+      html += ' · <a href=\"#\" id=\"toggle-fold\">' + strings.unfoldAll + '</a>';
       html += '</div>';
     }
     topics.forEach(t => {
@@ -605,6 +614,18 @@ table { margin-bottom: 2rem; }")
         e.preventDefault();
         viewMode = viewMode === 'categories' ? 'flat' : 'categories';
         render();
+      });
+    }
+
+    // Handle fold/unfold all click
+    const foldLink = document.getElementById('toggle-fold');
+    if (foldLink) {
+      foldLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const details = document.querySelectorAll('details');
+        const allOpen = Array.from(details).every(d => d.open);
+        details.forEach(d => d.open = !allOpen);
+        foldLink.textContent = allOpen ? strings.unfoldAll : strings.foldAll;
       });
     }
 
