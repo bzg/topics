@@ -94,13 +94,24 @@
         :fold-all            "Fold all"
         :unfold-all          "Unfold all"}})
 
-(def config-keys [:title :tagline :footer :source :css :lang :verbose :flat])
+(def config-keys [:title :tagline :footer :source :css :lang :verbose :flat :format])
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
+(defn html-escape [s]
+  (-> (or s "")
+      (str/replace "&" "&amp;")
+      (str/replace "<" "&lt;")
+      (str/replace ">" "&gt;")
+      (str/replace "\"" "&quot;")
+      (str/replace "'" "&#39;")))
+
 ;; Keep only maps with :title (category is optional)
-(defn valid-topics [topics-data]
-  (filter #(and (map? %) (:title %)) topics-data))
+(defn valid-topics [topics-data verbose]
+  (let [{valid true invalid false} (group-by #(and (map? %) (some? (:title %))) topics-data)]
+    (when (seq invalid)
+      (log verbose "Dropped" (count invalid) "entries without :title key"))
+    (or valid [])))
 
 (defn detect-format [source format-option]
   (if (= format-option "auto")
@@ -152,14 +163,19 @@
                       (map? parsed)        [parsed]
                       :else (throw (ex-info "Topics data must be a list or map at the top level"
                                             {:parsed-type (type parsed)})))
-              valid (valid-topics data)]
+              valid (valid-topics data verbose)
+              valid (mapv #(update % :title html-escape) valid)]
           (log verbose "Loaded" (count valid) "topics (filtered"
                (- (count data) (count valid)) "category headers or invalid entries)")
           {:ok valid})))
     (catch Exception e
       {:error (str "Error loading Topics data from " source ": " (.getMessage e))})))
 
-(defn load-config-file [config-path verbose]
+(defn load-config-file
+  "Load an EDN configuration file.  edn/read-string is safe by default in
+   Babashka (no eval of tagged literals), but config files should still come
+   from trusted sources."
+  [config-path verbose]
   (try
     (log verbose "Loading configuration from file:" config-path)
     (let [config-data (edn/read-string (slurp config-path))]
@@ -170,12 +186,12 @@
 
 ;; Normalize topics into a common structure with optional categories.
 (defn categorize-topics [topics-data no-categories?]
-  (->> topics-data
-       (map (fn [{:keys [title content category custom_id]}]
-              (cond-> {:title    (or title "")
-                       :content  (or content "")
-                       :category (when-not no-categories? category)}
-                custom_id (assoc :custom_id custom_id))))))
+  (map (fn [{:keys [title content category custom_id]}]
+         (cond-> {:title    (or title "")
+                  :content  (or content "")
+                  :category (when-not no-categories? category)}
+           custom_id (assoc :custom_id custom_id)))
+       topics-data))
 
 ;; AST Flattening (for org-parse AST input)
 ;;
@@ -271,7 +287,7 @@
              (case v
                "t" true
                "nil" false
-               (try (Integer/parseInt v) (catch Exception _ v)))]))))
+               (or (parse-long v) v))]))))
 
 (defn number-ast-sections
   "Walk an org-parse AST (with string types from JSON) and annotate each section
@@ -291,9 +307,7 @@
                       (let [level (:level child)
                             updated (-> counters
                                         (update level (fnil inc 0))
-                                        (#(reduce (fn [m k] (dissoc m k))
-                                                  %
-                                                  (filter (fn [k] (> k level)) (keys %)))))
+                                        (as-> m (apply dissoc m (filter #(> % level) (keys m)))))
                             sec-num (str/join "." (map #(get updated % 1)
                                                        (range 1 (inc level))))
                             numbered-kids (number-children (:children child) updated)
@@ -408,26 +422,12 @@ table { margin-bottom: 2rem; }")
                                       js-key-mapping))])
                 ui-strings)))
 
-(defn generate-js [topics-data ui-strings no-categories? flat? lang]
-  (let [all-strings-json (json/generate-string (ui-strings-for-js ui-strings))]
-    (str "(function() {
-  'use strict';
-  const topicsData = " (topics-to-js-array topics-data no-categories?) ";
-  const allStrings = " all-strings-json ";
-
-" (if lang
-    (str "  const strings = allStrings['" lang "'] || allStrings['en'];")
-    (str "  function detectLanguage() {
-    const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
-    if (lang.startsWith('fr')) return 'fr';
-    if (lang.startsWith('de')) return 'de';
-    return 'en';
-  }
-  const strings = allStrings[detectLanguage()];")) "
-
+;; Static JS body — everything after the dynamic preamble (topicsData, allStrings,
+;; strings resolver, viewMode).  Contains one placeholder: {{VIEW_MODE}}.
+(def js-body "
   let currentCategory = null;
   let currentSearch = '';
-  let viewMode = '" (if flat? "flat" "categories") "'; // 'categories' or 'flat'
+  let viewMode = '{{VIEW_MODE}}'; // 'categories' or 'flat'
   const contentDiv = document.getElementById('topics-content');
   const homeLink = document.getElementById('home-link');
 
@@ -454,7 +454,7 @@ table { margin-bottom: 2rem; }")
       .toLowerCase()
       .normalize('NFD')
       .replace(/[\\u0300-\\u036f]/g, '')
-      .replace(/['’]/g, \"'\");
+      .replace(/['']/g, \"'\");
   }
 
   // Keep in sync with the Clojure slugify function.
@@ -469,7 +469,6 @@ table { margin-bottom: 2rem; }")
 
   function getTopicId(topic) {
     if (topic.custom_id) {
-      // Sanitize custom_id: replace special chars and spaces with dashes
       return String(topic.custom_id)
         .replace(/[^a-zA-Z0-9_-]+/g, '-')
         .replace(/^-|-$/g, '');
@@ -507,12 +506,9 @@ table { margin-bottom: 2rem; }")
   }
 
   function getTopicsByCategory(category) {
-    // In flat mode, all topics have category = null and we use a single
-    // pseudo-category name (strings.allCategories) in the UI.
     if (!topicsData.length) return [];
-    const anyCat = topicsData.find(t => t.category != null && t.category !== null && t.category !== '');
+    const anyCat = topicsData.find(t => t.category != null && t.category !== '');
     if (!anyCat) {
-      // flat mode: any category selection shows all topics
       return topicsData.slice();
     }
     return topicsData.filter(t => t.category === category);
@@ -531,15 +527,17 @@ table { margin-bottom: 2rem; }")
     return html + '</nav>';
   }
 
-  function renderFlatList() {
-    let html = '<div class=\"view-toggles\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewByCategory + '</a> · <a href=\"#\" id=\"toggle-fold\">' + strings.unfoldAll + '</a></div>';
-    topicsData.forEach(t => {
-      const id = getTopicId(t);
-      html += `<details id=\"${id}\">
+  function renderTopicDetails(t) {
+    const id = getTopicId(t);
+    return `<details id=\"${id}\">
         <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" aria-label=\"${strings.permalink}\"><span aria-hidden=\"true\">🔗</span></a></summary>
         <div>${t.content}</div>
       </details>`;
-    });
+  }
+
+  function renderFlatList() {
+    let html = '<div class=\"view-toggles\"><span>' + topicsData.length + ' ' + strings.topicsCount + '</span> · <a href=\"#\" id=\"toggle-view\">' + strings.viewByCategory + '</a> · <a href=\"#\" id=\"toggle-fold\">' + strings.unfoldAll + '</a></div>';
+    topicsData.forEach(t => { html += renderTopicDetails(t); });
     return html;
   }
 
@@ -558,13 +556,7 @@ table { margin-bottom: 2rem; }")
       html += ' · <a href=\"#\" id=\"toggle-fold\">' + strings.unfoldAll + '</a>';
       html += '</div>';
     }
-    topics.forEach(t => {
-      const id = getTopicId(t);
-      html += `<details id=\"${id}\">
-        <summary>${t.title}<a href=\"#${id}\" class=\"permalink\" aria-label=\"${strings.permalink}\"><span aria-hidden=\"true\">🔗</span></a></summary>
-        <div>${t.content}</div>
-      </details>`;
-    });
+    topics.forEach(t => { html += renderTopicDetails(t); });
     return html;
   }
 
@@ -584,7 +576,6 @@ table { margin-bottom: 2rem; }")
     let html;
     const categories = getCategories();
 
-    // If URL has an anchor, switch to flat view so the target element exists
     if (window.location.hash && !currentSearch && !currentCategory
         && viewMode === 'categories' && hasRealCategories()) {
       viewMode = 'flat';
@@ -595,7 +586,6 @@ table { margin-bottom: 2rem; }")
     } else if (currentCategory) {
       html = renderTopicsList(getTopicsByCategory(currentCategory), true);
     } else if (isSinglePseudoCategory(categories)) {
-      // Only one pseudo-category (flat data): show all topics directly
       html = renderTopicsList(topicsData, false);
     } else if (viewMode === 'flat') {
       html = renderFlatList();
@@ -607,7 +597,6 @@ table { margin-bottom: 2rem; }")
     setupAriaExpanded();
     openAndScrollToHash();
 
-    // Handle view toggle click
     const toggleLink = document.getElementById('toggle-view');
     if (toggleLink) {
       toggleLink.addEventListener('click', (e) => {
@@ -617,7 +606,6 @@ table { margin-bottom: 2rem; }")
       });
     }
 
-    // Handle fold/unfold all click
     const foldLink = document.getElementById('toggle-fold');
     if (foldLink) {
       foldLink.addEventListener('click', (e) => {
@@ -666,7 +654,6 @@ table { margin-bottom: 2rem; }")
     const params = new URLSearchParams(window.location.search);
     currentSearch = params.get('q') || '';
     currentCategory = params.get('category') || null;
-    // Hash anchor takes precedence: clear filters so the target is visible
     if (window.location.hash) {
       currentSearch = '';
       currentCategory = null;
@@ -725,7 +712,32 @@ table { margin-bottom: 2rem; }")
   window.addEventListener('hashchange', () => { render(); });
   parseUrl();
   render();
-})();")))
+})();")
+
+(def js-detect-language "  function detectLanguage() {
+    const lang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    if (lang.startsWith('fr')) return 'fr';
+    if (lang.startsWith('de')) return 'de';
+    return 'en';
+  }
+  const strings = allStrings[detectLanguage()];")
+
+(defn generate-js
+  "Assemble the complete JS for the topics page.
+   Dynamic preamble (topicsData, allStrings, strings resolver) + static body."
+  [topics-data ui-strings no-categories? flat? lang]
+  (let [all-strings-json (json/generate-string (ui-strings-for-js ui-strings))
+        ;; Sanitize lang to only allow safe characters in JS string literal
+        safe-lang        (when lang (str/replace lang #"[^a-zA-Z0-9_-]" ""))
+        strings-resolver (if safe-lang
+                           (str "  const strings = allStrings['" safe-lang "'] || allStrings['en'];")
+                           js-detect-language)
+        view-mode        (if flat? "flat" "categories")]
+    (str "(function() {\n  'use strict';\n"
+         "  const topicsData = " (topics-to-js-array topics-data no-categories?) ";\n"
+         "  const allStrings = " all-strings-json ";\n\n"
+         strings-resolver "\n"
+         (str/replace js-body "{{VIEW_MODE}}" view-mode))))
 
 (defn ui-str
   "Resolve a UI string key using the configured language, falling back to English."
@@ -733,13 +745,6 @@ table { margin-bottom: 2rem; }")
   (let [lang (keyword (or (:lang config) "en"))]
     (get-in ui-strings [lang k] (get-in ui-strings [:en k]))))
 
-(defn html-escape [s]
-  (-> (or s "")
-      (str/replace "&" "&amp;")
-      (str/replace "<" "&lt;")
-      (str/replace ">" "&gt;")
-      (str/replace "\"" "&quot;")
-      (str/replace "'" "&#39;")))
 
 ;; Keep in sync with the JS slugify in generate-js.
 (defn slugify [text]
@@ -777,6 +782,17 @@ table { margin-bottom: 2rem; }")
     <p>" (html-escape (:tagline config)) "</p>
   </header>"))
 
+(defn render-topic-article
+  "Render a single topic as an <article> element for noscript content.
+   Titles are expected to be already HTML-safe (escaped at ingestion for plain
+   JSON data, or pre-rendered by org-parse for AST data)."
+  [topic]
+  (let [id (get-topic-id topic)]
+    (str "<article id=\"" id "\">"
+         "<h2>" (:title topic) "</h2>"
+         "<div>" (:content topic) "</div>"
+         "</article>")))
+
 (defn generate-noscript-content
   "Generate static HTML content for browsers without JavaScript.
    Shows all topics as sections, grouped by category if categories exist.
@@ -797,22 +813,10 @@ table { margin-bottom: 2rem; }")
                                  cat-topics (get by-cat cat)]]
                        (str "<section class=\"category-section\">"
                             "<h2>" (html-escape cat-name) "</h2>"
-                            (str/join "\n"
-                                      (for [topic cat-topics
-                                            :let [id (get-topic-id topic)]]
-                                        (str "<article id=\"" id "\">"
-                                             "<h2>" (:title topic) "</h2>"
-                                             "<div>" (:content topic) "</div>"
-                                             "</article>")))
+                            (str/join "\n" (map render-topic-article cat-topics))
                             "</section>")))
            ;; Without categories: flat list of all topics
-           (str/join "\n"
-                     (for [topic topics
-                           :let [id (get-topic-id topic)]]
-                       (str "<article id=\"" id "\">"
-                            "<h2>" (:title topic) "</h2>"
-                            "<div>" (:content topic) "</div>"
-                            "</article>"))))
+           (str/join "\n" (map render-topic-article topics)))
          "</div></noscript>")))
 
 (defn generate-main [config topics-data no-categories?]
@@ -821,7 +825,10 @@ table { margin-bottom: 2rem; }")
     <div id=\"topics-content\" aria-live=\"polite\"></div>
   </main>"))
 
-(defn generate-footer [config]
+(defn generate-footer
+  "Generate the page footer.  Note: :footer is rendered as raw HTML to allow
+   links and markup.  :source is escaped since it is a plain URL."
+  [config]
   (str "<footer class=\"container\">
     <p>" (when-let [src (:source config)]
            (str "<a target=\"_blank\" href=\"" (html-escape src) "\">" (ui-str config :content-source) "</a> · "))
@@ -888,10 +895,10 @@ table { margin-bottom: 2rem; }")
                  (assoc :css "custom.css"))]
       (when (:help opts) (show-help) (System/exit 0))
       (when (:verbose opts)
-        (when (and (not (some #{"-c" "--config"} args))
+        (when (and (not (some #(or (= % "-c") (str/starts-with? % "--config")) args))
                    (:config opts))
           (println "Auto-detected config file: config.edn"))
-        (when (and (not (some #{"-C" "--css"} args))
+        (when (and (not (some #(or (= % "-C") (str/starts-with? % "--css")) args))
                    (:css opts))
           (println "Auto-detected CSS file: custom.css")))
       (when-not (:input-file opts)
