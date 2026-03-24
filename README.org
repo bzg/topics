@@ -41,7 +41,7 @@ You can add configuration in a =config.edn= file:
   :tagline "Frequently asked questions"
   :footer  "<a href=\"https://example.com\">My site</a>"
   :source  "https://example.com/data/faq.json"
-  :css     "custom.css"}
+  :theme   "swh"}
 #+end_src
 
 Here are the configuration keys:
@@ -50,18 +50,16 @@ Here are the configuration keys:
 : :tagline - Website tagline (default: "Topics to explore")
 : :footer  - Footer HTML
 : :source  - URL displayed as content source
-: :css     - Custom CSS file to include
+: :theme   - Theme name to load from CDN (e.g. swh, dsfr, org or doric)
 
 Use =$ topics -c my_config.edn input.json= to use another file name than
 =config.edn=.
 
-The =index.html= output can link to a custom CSS file.
-
-By default, =topics= links to a =custom.css= file, if it exists in the
-local directory, but you can use other file like this:
+The =index.html= output can link to a theme CSS loaded from
+=https://cdn.jsdelivr.net/gh/bzg/pico-themes@main/{name}.css=.
 
 #+begin_src sh
-$ topics -C my_custom.css input.json
+$ topics -t swh input.json
 #+end_src
 
 * Feedback

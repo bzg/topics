@@ -51,7 +51,7 @@
    :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
    :footer        {:alias :F :desc "Footer HTML" :ref "<string>"}
    :source        {:alias :s :desc "URL to display as content source" :ref "<url>"}
-   :css           {:alias :C :desc "Custom CSS file to include (overrides default styles)" :ref "<file>"}
+   :theme         {:alias :t :desc "Theme name to load from CDN (e.g. swh, dsfr, org)" :ref "<name>"}
    :config        {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
    :verbose       {:alias :v :desc "Enable verbose output" :type :boolean}
    :help          {:alias :h :desc "Show help" :type :boolean}})
@@ -94,7 +94,7 @@
         :fold-all            "Fold all"
         :unfold-all          "Unfold all"}})
 
-(def config-keys [:title :tagline :footer :source :css :lang :verbose :flat :format])
+(def config-keys [:title :tagline :footer :source :theme :lang :verbose :flat :format])
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
@@ -764,8 +764,10 @@ table { margin-bottom: 2rem; }")
         (str/replace #"^-|-$" ""))
     (slugify title)))
 
-(defn generate-head [config css-file]
-  (let [css-name (when css-file (str (fs/file-name css-file)))]
+(defn generate-head [config]
+  (let [theme (:theme config)
+        theme-url (when theme
+                    (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@main/" theme ".css"))]
     (str "<head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
@@ -773,7 +775,7 @@ table { margin-bottom: 2rem; }")
   <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
   <style>" css-styles "</style>"
-         (when css-name (str "\n  <link rel=\"stylesheet\" href=\"" css-name "\">")) "
+         (when theme-url (str "\n  <link rel=\"stylesheet\" href=\"" theme-url "\">")) "
 </head>")))
 
 (defn generate-header [config]
@@ -836,11 +838,10 @@ table { margin-bottom: 2rem; }")
   </footer>"))
 
 (defn generate-html [config topics-data no-categories? flat?]
-  (let [css-file (:css config)
-        lang     (:lang config)]
+  (let [lang (:lang config)]
     (str "<!DOCTYPE html>
 <html lang=\"" (html-escape (or lang "en")) "\">
-" (generate-head config css-file) "
+" (generate-head config) "
 <body>
   " (generate-header config) "
   " (generate-main config topics-data no-categories?) "
@@ -867,13 +868,6 @@ table { margin-bottom: 2rem; }")
       (println (:error topics-result))
       (System/exit 1))
     (let [topics-data (:ok topics-result)]
-      (when-let [css-file (:css config)]
-        (let [target (str (fs/file-name css-file))]
-          (if (fs/exists? css-file)
-            (when-not (and (fs/exists? target) (fs/same-file? css-file target))
-              (fs/copy css-file target {:replace-existing true})
-              (log verbose "Copied:" css-file "->" target))
-            (log verbose "CSS file not found:" css-file))))
       (spit "index.html" (generate-html config topics-data no-categories flat))
       (println "Generated: index.html"))))
 
@@ -885,22 +879,17 @@ table { margin-bottom: 2rem; }")
 (defn -main [& args]
   (try
     (let [{:keys [args opts]} (cli/parse-args args {:spec cli-options})
-          ;; Auto-detect input file, config, and CSS
+          ;; Auto-detect input file and config
           opts (cond-> opts
                  (and (not (:input-file opts)) (seq args))
                  (assoc :input-file (first args))
                  (and (not (:config opts)) (fs/exists? "config.edn"))
-                 (assoc :config "config.edn")
-                 (and (not (:css opts)) (fs/exists? "custom.css"))
-                 (assoc :css "custom.css"))]
+                 (assoc :config "config.edn"))]
       (when (:help opts) (show-help) (System/exit 0))
       (when (:verbose opts)
         (when (and (not (some #(or (= % "-c") (str/starts-with? % "--config")) args))
                    (:config opts))
-          (println "Auto-detected config file: config.edn"))
-        (when (and (not (some #(or (= % "-C") (str/starts-with? % "--css")) args))
-                   (:css opts))
-          (println "Auto-detected CSS file: custom.css")))
+          (println "Auto-detected config file: config.edn")))
       (when-not (:input-file opts)
         (println "Error: topics file or URL is required\n")
         (show-help)
