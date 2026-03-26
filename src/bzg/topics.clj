@@ -767,7 +767,7 @@ table { margin-bottom: 2rem; }")
 (defn generate-head [config]
   (let [theme (:theme config)
         theme-url (when theme
-                    (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@main/" theme ".css"))]
+                    (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@latest/" theme ".css"))]
     (str "<head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
