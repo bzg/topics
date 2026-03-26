@@ -40,18 +40,20 @@
    :tagline "Topics to explore"
    :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"})
 
+(def known-themes #{"org" "swh" "doric" "lincoln" "teletype" "dsfr"})
+
 (def cli-options
   {:input-file    {:alias :i :desc "Path or URL to input file (JSON, EDN, or YAML)" :ref "<file|url>"}
    :format        {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>"
                    :validate #(contains? #{"auto" "json" "edn" "yaml"} %)}
    :lang          {:alias :l :desc "HTML lang attribute (e.g. en, fr, de)" :ref "<string>"}
    :no-categories {:alias :n :desc "Ignore categories (flat list of topics)" :type :boolean}
-   :flat          {:alias :a :desc "Default to full list view instead of categories grid" :type :boolean}
+   :no-categories-grid {:alias :N :desc "Default to full list view instead of categories grid" :type :boolean}
    :title         {:alias :T :desc "Website title" :ref "<string>"}
    :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
    :footer        {:alias :F :desc "Footer HTML" :ref "<string>"}
-   :source        {:alias :s :desc "URL to display as content source" :ref "<url>"}
-   :theme         {:alias :t :desc "Theme name to load from CDN (e.g. swh, dsfr, org)" :ref "<name>"}
+   :source        {:alias :S :desc "URL to display as content source" :ref "<url>"}
+   :css-theme     {:alias :C :desc "CSS theme: known name (org, swh, doric, lincoln, teletype, dsfr), URL, or local path" :ref "<theme|url|path>"}
    :config        {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
    :verbose       {:alias :v :desc "Enable verbose output" :type :boolean}
    :help          {:alias :h :desc "Show help" :type :boolean}})
@@ -94,7 +96,7 @@
         :fold-all            "Fold all"
         :unfold-all          "Unfold all"}})
 
-(def config-keys [:title :tagline :footer :source :theme :lang :verbose :flat :format])
+(def config-keys [:title :tagline :footer :source :css-theme :lang :verbose :no-categories-grid :format])
 
 (defn log [verbose & args] (when verbose (apply println args)))
 
@@ -765,9 +767,16 @@ table { margin-bottom: 2rem; }")
     (slugify title)))
 
 (defn generate-head [config]
-  (let [theme (:theme config)
-        theme-url (when theme
-                    (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@latest/" theme ".css"))]
+  (let [css-theme (:css-theme config)
+        theme-url (when css-theme
+                    (cond
+                      (known-themes css-theme)
+                      (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@latest/" css-theme ".css")
+                      (http-url? css-theme) css-theme
+                      (fs/exists? css-theme) nil ;; local file handled via inline style
+                      :else (do (println "Warning: unknown CSS theme:" css-theme) nil)))
+        local-css (when (and css-theme (not (http-url? css-theme)) (not (known-themes css-theme)) (fs/exists? css-theme))
+                    (slurp css-theme))]
     (str "<head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
@@ -775,7 +784,8 @@ table { margin-bottom: 2rem; }")
   <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
   <style>" css-styles "</style>"
-         (when theme-url (str "\n  <link rel=\"stylesheet\" href=\"" theme-url "\">")) "
+         (when theme-url (str "\n  <link rel=\"stylesheet\" href=\"" theme-url "\">"))
+         (when local-css (str "\n  <style>" local-css "</style>")) "
 </head>")))
 
 (defn generate-header [config]
@@ -853,7 +863,7 @@ table { margin-bottom: 2rem; }")
 (defn generate-site [opts]
   (let [verbose       (:verbose opts)
         no-categories (:no-categories opts)
-        flat          (:flat opts)
+        flat          (:no-categories-grid opts)
         file-config   (when-let [config-path (:config opts)]
                         (let [result (load-config-file config-path verbose)]
                           (if (:error result)
@@ -871,10 +881,28 @@ table { margin-bottom: 2rem; }")
       (spit "index.html" (generate-html config topics-data no-categories flat))
       (println "Generated: index.html"))))
 
+(defn format-opts-sorted
+  "Format CLI options: lowercase aliases first (a-z), then uppercase (A-Z),
+   with descriptions aligned to a common column."
+  [spec]
+  (let [entries  (for [[k v] spec
+                       :let [alias (some-> (:alias v) name)]]
+                   {:key k :alias alias :desc (:desc v) :ref (:ref v)})
+        sorted   (concat
+                  (sort-by :alias (filter #(some-> (:alias %) first Character/isLowerCase) entries))
+                  (sort-by :alias (filter #(some-> (:alias %) first Character/isUpperCase) entries)))
+        left-col (fn [{:keys [alias key ref]}]
+                   (str "  -" alias ", --" (name key) (when ref (str " " ref))))
+        lefts    (map left-col sorted)
+        max-w    (apply max (map count lefts))]
+    (str/join "\n" (map (fn [left {:keys [desc]}]
+                          (str left (apply str (repeat (- (+ max-w 2) (count left)) \space)) desc))
+                        lefts sorted))))
+
 (defn show-help []
   (println "Usage: topics [options] -i <file|url>")
   (println "\nGenerates a static HTML/CSS/JS site from topics data.\n\nOptions:")
-  (println (cli/format-opts {:spec cli-options})))
+  (println (format-opts-sorted cli-options)))
 
 (defn -main [& args]
   (try
