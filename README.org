@@ -46,20 +46,27 @@ You can add configuration in a =config.edn= file:
 
 Here are the configuration keys:
 
-: :title   - Website title (default: "Topics")
-: :tagline - Website tagline (default: "Topics to explore")
-: :footer  - Footer HTML
-: :source  - URL displayed as content source
-: :theme   - Theme name to load from CDN (e.g. swh, dsfr, org or doric)
+: :title     - Website title (default: "Topics")
+: :tagline   - Website tagline (default: "Topics to explore")
+: :footer    - Footer HTML
+: :source    - URL displayed as content source
+: :css-theme - CSS theme (see below)
 
 Use =$ topics -c my_config.edn input.json= to use another file name than
 =config.edn=.
 
-The =index.html= output can link to a theme CSS loaded from
-=https://cdn.jsdelivr.net/gh/bzg/pico-themes@main/{name}.css=.
+The =-C= / =--css-theme= option accepts four forms:
+
+- *https:// URL*: linked as an external stylesheet via =<link>=
+- *file:/// URL*: the local file content is inlined in =<style>=
+- *Local .css path* (relative or absolute): the file content is inlined in =<style>=
+- *Theme name* (e.g. =doric=, =org=, =swh=): resolved to a [[https://github.com/bzg/pico-themes][pico-themes]] CDN URL
 
 #+begin_src sh
-$ topics -t swh input.json
+$ topics -C swh input.json
+$ topics -C https://example.com/my-theme.css input.json
+$ topics -C file:///home/user/my-theme.css input.json
+$ topics -C ./my-theme.css input.json
 #+end_src
 
 * Feedback

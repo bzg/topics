@@ -40,8 +40,6 @@
    :tagline "Topics to explore"
    :footer  "<a href=\"https://codeberg.org/bzg/topics\">Topics</a>"})
 
-(def known-themes #{"org" "swh" "doric" "lincoln" "teletype" "dsfr"})
-
 (def cli-options
   {:input-file    {:alias :i :desc "Path or URL to input file (JSON, EDN, or YAML)" :ref "<file|url>"}
    :format        {:alias :f :desc "Format of topics file (json, edn, yaml, or auto)" :ref "<string>"
@@ -53,7 +51,7 @@
    :tagline       {:alias :L :desc "Website tagline" :ref "<string>"}
    :footer        {:alias :F :desc "Footer HTML" :ref "<string>"}
    :source        {:alias :S :desc "URL to display as content source" :ref "<url>"}
-   :css-theme     {:alias :C :desc "CSS theme: known name (org, swh, doric, lincoln, teletype, dsfr), URL, or local path" :ref "<theme|url|path>"}
+   :css-theme     {:alias :C :desc "CSS theme: https:// URL, file:/// URL, local .css path, or pico-themes name (e.g. doric, org, swh)" :ref "<theme|url|path>"}
    :config        {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
    :verbose       {:alias :v :desc "Enable verbose output" :type :boolean}
    :help          {:alias :h :desc "Show help" :type :boolean}})
@@ -766,17 +764,30 @@ table { margin-bottom: 2rem; }")
         (str/replace #"^-|-$" ""))
     (slugify title)))
 
+(defn resolve-css-theme
+  "Resolve a --css-theme value to {:link url} or {:inline content}.
+  Priority: https:// URL, file:/// URL, local .css path, pico-themes name."
+  [css-theme]
+  (when css-theme
+    (cond
+      (http-url? css-theme)
+      {:link css-theme}
+      (str/starts-with? css-theme "file:///")
+      (let [path (subs css-theme 7)]
+        (if (fs/exists? path)
+          {:inline (slurp path)}
+          (do (println "Warning: file not found:" path) nil)))
+      (and (str/ends-with? css-theme ".css") (fs/exists? css-theme))
+      {:inline (slurp css-theme)}
+      (not (str/includes? css-theme " "))
+      {:link (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@latest/" css-theme ".css")}
+      :else
+      (do (println "Warning: unrecognized CSS theme value:" css-theme) nil))))
+
 (defn generate-head [config]
-  (let [css-theme (:css-theme config)
-        theme-url (when css-theme
-                    (cond
-                      (known-themes css-theme)
-                      (str "https://cdn.jsdelivr.net/gh/bzg/pico-themes@latest/" css-theme ".css")
-                      (http-url? css-theme) css-theme
-                      (fs/exists? css-theme) nil ;; local file handled via inline style
-                      :else (do (println "Warning: unknown CSS theme:" css-theme) nil)))
-        local-css (when (and css-theme (not (http-url? css-theme)) (not (known-themes css-theme)) (fs/exists? css-theme))
-                    (slurp css-theme))]
+  (let [resolved (resolve-css-theme (:css-theme config))
+        theme-link (:link resolved)
+        local-css  (:inline resolved)]
     (str "<head>
   <meta charset=\"utf-8\">
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">
@@ -784,7 +795,7 @@ table { margin-bottom: 2rem; }")
   <link rel=\"icon\" href=\"data:image/png;base64,iVBORw0KGgo=\">
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
   <style>" css-styles "</style>"
-         (when theme-url (str "\n  <link rel=\"stylesheet\" href=\"" theme-url "\">"))
+         (when theme-link (str "\n  <link rel=\"stylesheet\" href=\"" theme-link "\">"))
          (when local-css (str "\n  <style>" local-css "</style>")) "
 </head>")))
 
