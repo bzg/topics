@@ -90,10 +90,10 @@ For detailed installation instructions:
 
 * Contributing
 
-- Send a [[mailto:~bzg/dev@lists.sr.ht?subject=\[BUG\] topics: <SHORT EXPLICIT BUG DESCRIPTION>][bug report]]
-- Send a [[mailto:~bzg/dev@lists.sr.ht?subject=\[PATCH\] topics: <COMMIT SUMMARY>][patch]] (please use =git format-patch=)
-- Send a [[mailto:~bzg/dev@lists.sr.ht?subject=\[FR\] topics: <FEATURE REQUEST>][feature request]]
-- Share any [[mailto:~bzg/dev@lists.sr.ht?subject=topics: <ANYTHING>][other question or idea]]
+- Send a [[mailto:~bzg/dev@lists.sr.ht][bug report]] with =[BUG] topics: <SHORT EXPLICIT BUG DESCRIPTION>=
+- Send a [[mailto:~bzg/dev@lists.sr.ht][patch]] with =[PATCH] topics: <COMMIT SUMMARY>=
+- Send a [[mailto:~bzg/dev@lists.sr.ht][feature request]] with =[FR] topics: <FEATURE REQUEST>=
+- Share any [[mailto:~bzg/dev@lists.sr.ht][other question or idea]]
 
 You can also [[mailto:bzg@bzg.fr][send me an email]] and support my work on [[https://liberapay.com/bzg/][liberapay]].
 
