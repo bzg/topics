@@ -71,10 +71,6 @@ $ topics -C file:///home/user/my-theme.css input.json
 $ topics -C ./my-theme.css input.json
 #+end_src
 
-* Feedback
-
-To get or provide feedback, send an email to *bzg@bzg.fr*.
-
 * Requirements
 
 =topics= is written as a [[https://clojure.org][Clojure]] [[https://babashka.org][Babashka]] script and we recommend
