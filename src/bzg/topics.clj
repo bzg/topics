@@ -169,7 +169,7 @@
                (- (count data) (count valid)) "category headers or invalid entries)")
           {:ok valid})))
     (catch Exception e
-      {:error (str "Error loading Topics data from " source ": " (.getMessage e))})))
+      {:error (str "Error loading Topics data from " source ": " (or (.getMessage e) (str e)))})))
 
 (defn load-config-file
   "Load an EDN configuration file.  edn/read-string is safe by default in
@@ -241,7 +241,7 @@
                                     (if has-header (rest rows) rows)))
                      "</tbody></table>")))
     "src-block" (str "<pre><code>" (:content node) "</code></pre>")
-    "quote-block" (str "<blockquote><p>" (str/replace (:content node) #"\n\n+" "</p><p>") "</p></blockquote>")
+    "quote-block" (str "<blockquote><p>" (str/replace (or (:content node) "") #"\n\n+" "</p><p>") "</p></blockquote>")
     "fixed-width" (str "<pre>" (:content node) "</pre>")
     "footnote-def" (str "<div class=\"footnote\"><sup>" (:label node) "</sup> " (:content node) "</div>")
     "section" (let [h (min (:level node) 6)]
