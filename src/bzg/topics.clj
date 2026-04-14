@@ -182,7 +182,7 @@
       (log verbose "Configuration loaded successfully")
       {:ok config-data})
     (catch Exception e
-      {:error (str "Failed to load configuration file " config-path ": " (.getMessage e))})))
+      {:error (str "Failed to load configuration file " config-path ": " (or (.getMessage e) (str e)))})))
 
 ;; Normalize topics into a common structure with optional categories.
 (defn categorize-topics [topics-data no-categories?]
@@ -241,7 +241,8 @@
                                     (if has-header (rest rows) rows)))
                      "</tbody></table>")))
     "src-block" (str "<pre><code>" (:content node) "</code></pre>")
-    "quote-block" (str "<blockquote><p>" (str/replace (or (:content node) "") #"\n\n+" "</p><p>") "</p></blockquote>")
+    "quote-block" (let [paragraphs (str/replace (or (:content node) "") #"\n\n+" "</p><p>")]
+                    (str "<blockquote><p>" paragraphs "</p></blockquote>"))
     "fixed-width" (str "<pre>" (:content node) "</pre>")
     "footnote-def" (str "<div class=\"footnote\"><sup>" (:label node) "</sup> " (:content node) "</div>")
     "section" (let [h (min (:level node) 6)]
