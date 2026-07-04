@@ -30,6 +30,7 @@
             [clj-yaml.core :as yaml]
             [clojure.edn :as edn]
             [babashka.fs :as fs]
+            [babashka.process :as process]
             [babashka.curl :as curl]
             [clojure.string :as str]))
 
@@ -54,6 +55,7 @@
    :css-theme     {:alias :C :desc "CSS theme: https:// URL, file:/// URL, local .css path, or pico-themes name (e.g. doric, org, swh)" :ref "<theme|url|path>"}
    :config        {:alias :c :desc "Path to configuration file (EDN format)" :ref "<file>"}
    :verbose       {:alias :v :desc "Enable verbose output" :type :boolean}
+   :version       {:desc "Show the topics version" :type :boolean}
    :help          {:alias :h :desc "Show help" :type :boolean}})
 
 (def ui-strings
@@ -916,6 +918,19 @@ table { margin-bottom: 2rem; }")
   (println "\nGenerates a static HTML/CSS/JS site from topics data.\n\nOptions:")
   (println (format-opts-sorted cli-options)))
 
+(defn- bbin-version
+  "Version string read from bbin's install metadata (`bbin ls --edn`), or nil
+  when bbin is absent or topics was not installed through it."
+  []
+  (try
+    (let [{:keys [out exit]} (process/shell {:out :string :err :string :continue true}
+                                            "bbin" "ls" "--edn")]
+      (when (zero? exit)
+        (some (fn [e] (when (= 'io.github.bzg/topics (:lib e))
+                        (get-in e [:coords :git/tag])))
+              (vals (edn/read-string out)))))
+    (catch Exception _ nil)))
+
 (defn -main [& args]
   (try
     (let [{:keys [args opts]} (cli/parse-args args {:spec cli-options})
@@ -925,6 +940,9 @@ table { margin-bottom: 2rem; }")
                  (assoc :input-file (first args))
                  (and (not (:config opts)) (fs/exists? "config.edn"))
                  (assoc :config "config.edn"))]
+      (when (:version opts)
+        (println (str "topics " (or (bbin-version) "(version unknown)")))
+        (System/exit 0))
       (when (:help opts) (show-help) (System/exit 0))
       (when (:verbose opts)
         (when (and (not (some #(or (= % "-c") (str/starts-with? % "--config")) args))
