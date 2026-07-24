@@ -202,6 +202,21 @@
 
 (defn section? [node] (= (:type node) "section"))
 
+(def hljs-builtin
+  "Languages included in the default highlight.js bundle."
+  #{"bash" "c" "cpp" "csharp" "css" "diff" "go" "graphql" "ini" "java"
+    "javascript" "json" "kotlin" "less" "lua" "makefile" "markdown" "objectivec"
+    "perl" "php" "php-template" "plaintext" "python" "python-repl" "r" "ruby"
+    "rust" "scss" "shell" "sql" "swift" "typescript" "vbnet" "wasm" "xml" "yaml"})
+
+(def hljs-lang-map
+  "Map Org source block language names to highlight.js names."
+  {"emacs-lisp" "lisp" "elisp" "lisp"
+   "sh" "bash" "zsh" "bash"
+   "js" "javascript" "ts" "typescript"
+   "html" "xml" "yml" "yaml"
+   "c++" "cpp" "c#" "csharp"})
+
 (defn render-node-for-topics
   "Render an AST node to HTML for topics content."
   [node]
@@ -242,7 +257,10 @@
                                            "</tr>"))
                                     (if has-header (rest rows) rows)))
                      "</tbody></table>")))
-    "src-block" (str "<pre><code>" (:content node) "</code></pre>")
+    "src-block" (let [lang (some-> (:language node) str/lower-case (as-> l (get hljs-lang-map l l)))]
+                  (str "<pre><code"
+                       (when lang (str " class=\"language-" lang "\""))
+                       ">" (:content node) "</code></pre>"))
     "quote-block" (let [paragraphs (str/replace (or (:content node) "") #"\n\n+" "</p><p>")]
                     (str "<blockquote><p>" paragraphs "</p></blockquote>"))
     "fixed-width" (str "<pre>" (:content node) "</pre>")
@@ -597,6 +615,7 @@ table { margin-bottom: 2rem; }")
     }
 
     contentDiv.innerHTML = html;
+    if (window.hljs) hljs.highlightAll();
     setupAriaExpanded();
     openAndScrollToHash();
 
@@ -787,7 +806,7 @@ table { margin-bottom: 2rem; }")
       :else
       (do (println "Warning: unrecognized CSS theme value:" css-theme) nil))))
 
-(defn generate-head [config]
+(defn generate-head [config has-code?]
   (let [resolved (resolve-css-theme (:css-theme config))
         theme-link (:link resolved)
         local-css  (:inline resolved)]
@@ -799,8 +818,31 @@ table { margin-bottom: 2rem; }")
   <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css\">
   <style>" css-styles "</style>"
          (when theme-link (str "\n  <link rel=\"stylesheet\" href=\"" theme-link "\">"))
-         (when local-css (str "\n  <style>" local-css "</style>")) "
+         (when local-css (str "\n  <style>" local-css "</style>"))
+         (when has-code? "\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/default.min.css\">") "
 </head>")))
+
+(def code-lang-class-re #"class=\"language-([\w+-]+)\"")
+
+(defn detect-code-languages
+  "Scan topics content for highlight.js language classes (from rendered
+   src-blocks, or from raw HTML supplied directly in the topics data).
+   Returns {:has-code? bool :hl-langs [non-builtin language names]}."
+  [topics-data]
+  (let [langs (into #{}
+                    (mapcat (fn [{:keys [content]}]
+                              (map second (re-seq code-lang-class-re (str content)))))
+                    topics-data)]
+    {:has-code? (boolean (seq langs))
+     :hl-langs  (vec (remove hljs-builtin langs))}))
+
+(defn generate-hljs-scripts
+  "Conditionally emit highlight.js CDN scripts: core bundle plus one script
+   per non-builtin language actually used."
+  [has-code? hl-langs]
+  (when has-code?
+    (str "<script src=\"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js\"></script>\n  "
+         (str/join "\n  " (map #(str "<script src=\"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/" % ".min.js\"></script>") hl-langs)))))
 
 (defn generate-header [config]
   (str "<header class=\"container\">
@@ -862,14 +904,16 @@ table { margin-bottom: 2rem; }")
   </footer>"))
 
 (defn generate-html [config topics-data no-categories? flat?]
-  (let [lang (:lang config)]
+  (let [lang (:lang config)
+        {:keys [has-code? hl-langs]} (detect-code-languages topics-data)]
     (str "<!DOCTYPE html>
 <html lang=\"" (html-escape (or lang "en")) "\">
-" (generate-head config) "
+" (generate-head config has-code?) "
 <body>
   " (generate-header config) "
   " (generate-main config topics-data no-categories?) "
   " (generate-footer config) "
+  " (generate-hljs-scripts has-code? hl-langs) "
   <script>" (generate-js topics-data ui-strings no-categories? flat? lang) "</script>
 </body>
 </html>")))
